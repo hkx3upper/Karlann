@@ -4,16 +4,15 @@
 ## Foreword：
 **Karlann**是一个Windows内核键盘记录器，驱动通过定时扫描的方式获取kbdclass.sys缓冲区的键盘Scancode，并将Scancode转换成对应的大小写字符。  
 ![Karlann](https://user-images.githubusercontent.com/41336794/187206064-15c9149a-caae-46c1-afa6-8a49efe0f3c8.gif)  
-## Description：![Uploading Karlann.gif…]()
-
+## Description：
 #### 原理：
 kbdclass.sys的三个关键函数：KeyboardClassHandleRead、KeyboardClassServiceCallback和KeyboardClassReadCopyData  
 ![Karlann](https://user-images.githubusercontent.com/41336794/187205549-92e005c0-d7d5-4f4e-bdee-130a49b00180.jpg)  
 函数KeyboardClassReadCopyData作用是将Scancode从kbdclass.sys的缓冲区拷贝到IRP中；  
-对于函数KeyboardClassHandleRead，希望它将IRP插入链表ReadQueue，而不是直接从缓冲区拷贝Scancode到IRP并返回IRP；  
-对于函数KeyboardClassServiceCallback，希望它将Scancode拷贝到缓冲区，而不是直接拷贝到IRP并返回IRP。  
+对于函数KeyboardClassHandleRead，希望它将IRP插入链表ReadQueue，而不是直接从缓冲区拷贝Scancode到并返回IRP；  
+对于函数KeyboardClassServiceCallback，希望它将Scancode拷贝到缓冲区，而不是直接拷贝并返回IRP。  
 因此创建三个线程，分别为：PocDequeueReadThread，PocReadCopyDataThread，PocMoveDatatoIrpThread：  
-**PocDequeueReadThread**：用于从kbdclass的IRP链表ReadQueue中抢夺IRP，防止KeyboardClassServiceCallback获得IRP；  
+**PocDequeueReadThread**：用于从kbdclass的IRP链表ReadQueue中抢夺IRP，防止KeyboardClassServiceCallback获得IRP，将Scancode直接拷贝并返回IRP；  
 **PocReadCopyDataThread**：用于和KeyboardClassServiceCallback竞争从下层驱动传入的Scancode，暂存到TempBuffer中，防止KeyboardClassHandleRead的InputCount != 0的情况；  
 **PocMoveDatatoIrpThread**：用于将TempBuffer中的Scancode传入PocDequeueReadThread抢夺的IRP中，结束并返回IRP。  
 #### 不足：
