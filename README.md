@@ -6,7 +6,8 @@
 ![Karlann](https://user-images.githubusercontent.com/41336794/187206064-15c9149a-caae-46c1-afa6-8a49efe0f3c8.gif)  
 ## Description：
 #### 原理：
-kbdclass.sys的三个关键函数：KeyboardClassHandleRead、KeyboardClassServiceCallback和KeyboardClassReadCopyData  
+kbdclass.sys的三个关键函数：  
+KeyboardClassHandleRead、KeyboardClassServiceCallback和KeyboardClassReadCopyData  
 ![Karlann](https://user-images.githubusercontent.com/41336794/187205549-92e005c0-d7d5-4f4e-bdee-130a49b00180.jpg)  
 函数KeyboardClassReadCopyData作用是将Scancode从kbdclass.sys的缓冲区拷贝到IRP中；  
 对于函数KeyboardClassHandleRead，希望它将IRP插入链表ReadQueue，而不是直接从缓冲区拷贝并返回IRP；  
