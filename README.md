@@ -9,12 +9,12 @@
 kbdclass.sys的三个关键函数：KeyboardClassHandleRead、KeyboardClassServiceCallback和KeyboardClassReadCopyData  
 ![Karlann](https://user-images.githubusercontent.com/41336794/187205549-92e005c0-d7d5-4f4e-bdee-130a49b00180.jpg)  
 函数KeyboardClassReadCopyData作用是将Scancode从kbdclass.sys的缓冲区拷贝到IRP中；  
-对于函数KeyboardClassHandleRead，希望它将IRP插入链表ReadQueue，而不是直接从缓冲区拷贝Scancode到并返回IRP；  
+对于函数KeyboardClassHandleRead，希望它将IRP插入链表ReadQueue，而不是直接从缓冲区拷贝并返回IRP；  
 对于函数KeyboardClassServiceCallback，希望它将Scancode拷贝到缓冲区，而不是直接拷贝并返回IRP。  
 因此创建三个线程，分别为：PocDequeueReadThread，PocReadCopyDataThread，PocMoveDatatoIrpThread：  
 **PocDequeueReadThread**：用于从kbdclass的IRP链表ReadQueue中抢夺IRP，防止KeyboardClassServiceCallback获得IRP，将Scancode直接拷贝并返回IRP；  
 **PocReadCopyDataThread**：用于和KeyboardClassServiceCallback竞争从下层驱动传入的Scancode，暂存到TempBuffer中，防止KeyboardClassHandleRead的InputCount != 0的情况；  
-**PocMoveDatatoIrpThread**：用于将TempBuffer中的Scancode传入PocDequeueReadThread抢夺的IRP中，结束并返回IRP。  
+**PocMoveDatatoIrpThread**：用于将TempBuffer中的Scancode传入PocDequeueReadThread抢夺的IRP中，结束IRP。  
 #### 不足：
 因为没有hook函数，只是用线程抢夺IRP和Scancode，所以小概率会漏掉Scancode（主要发生在键盘按键太快时，通常Makecode和BreakCode只会漏一个，目前基本支持四键无冲），可以额外处理一下获取的Scancode，确保得到正确的键盘数据。  
 #### 未公开的结构体和函数（kbdclass.sys）：
