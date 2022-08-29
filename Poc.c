@@ -423,6 +423,8 @@ PocMoveDatatoIrpThread(
             */
             for(ULONG i = 0; i < 2; i++)
             {
+                Status = KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+
                 KeAcquireSpinLock(SpinLock, &Irql);
 
                 Status = PocReadCopyDataToIrp(DeviceExtension, Irp);
@@ -437,8 +439,6 @@ PocMoveDatatoIrpThread(
                 }
 
                 KeReleaseSpinLock(SpinLock, Irql);
-
-                Status = KeDelayExecutionThread(KernelMode, FALSE, &Interval);
             }
 
 
