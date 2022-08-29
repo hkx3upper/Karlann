@@ -345,12 +345,6 @@ PocMoveDatatoIrpThread(
     HANDLE ThreadHandle = NULL;
 
 
-#pragma warning(push)
-#pragma warning(disable:4996)
-    ulHundredNanoSecond = 10 * 1000;
-    Interval = RtlConvertLongToLargeInteger(-1 * ulHundredNanoSecond);
-#pragma warning(pop)
-
     while (!gUnloading)
     {
 
@@ -415,13 +409,22 @@ PocMoveDatatoIrpThread(
                     gReadFakeIrpItem.KeyCount * sizeof(KEYBOARD_INPUT_DATA));
             }
             
+            KeReleaseSpinLock(SpinLock, Irql);
+
+#pragma warning(push)
+#pragma warning(disable:4996)
+            ulHundredNanoSecond = 200 * 1000;
+            Interval = RtlConvertLongToLargeInteger(-1 * ulHundredNanoSecond);
+#pragma warning(pop)
 
             /*
             * 多拷贝几次，防止kbdclass的缓冲区残留数据，
             * 这里基本上多循环几次，就可以不漏字符，通常可以达到四键无冲
             */
-            for(ULONG i = 0; i < 8; i++)
+            for(ULONG i = 0; i < 2; i++)
             {
+                KeAcquireSpinLock(SpinLock, &Irql);
+
                 Status = PocReadCopyDataToIrp(DeviceExtension, Irp);
 
                 if (!NT_SUCCESS(Status))
@@ -432,9 +435,11 @@ PocMoveDatatoIrpThread(
                             Status));
                     goto EXIT;
                 }
-            }
 
-            KeReleaseSpinLock(SpinLock, Irql);
+                KeReleaseSpinLock(SpinLock, Irql);
+
+                Status = KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+            }
 
 
             InputData = Irp->AssociatedIrp.SystemBuffer;
@@ -479,6 +484,12 @@ PocMoveDatatoIrpThread(
 
             IoCompleteRequest(Irp, IO_KEYBOARD_INCREMENT);
         }
+
+#pragma warning(push)
+#pragma warning(disable:4996)
+        ulHundredNanoSecond = 10 * 1000;
+        Interval = RtlConvertLongToLargeInteger(-1 * ulHundredNanoSecond);
+#pragma warning(pop)
 
         Status = KeDelayExecutionThread(KernelMode, FALSE, &Interval);
     }
