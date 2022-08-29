@@ -11,6 +11,7 @@ kbdclass.sys的三个关键函数：KeyboardClassHandleRead、KeyboardClassServi
 函数KeyboardClassReadCopyData作用是将Scancode从kbdclass.sys的缓冲区拷贝到IRP中；  
 对于函数KeyboardClassHandleRead，希望它将IRP插入链表ReadQueue，而不是直接从缓冲区拷贝并返回IRP；  
 对于函数KeyboardClassServiceCallback，希望它将Scancode拷贝到缓冲区，而不是直接拷贝并返回IRP。  
+
 因此创建三个线程，分别为：PocDequeueReadThread，PocReadCopyDataThread，PocMoveDatatoIrpThread：  
 **PocDequeueReadThread**：用于从kbdclass的IRP链表ReadQueue中抢夺IRP，防止KeyboardClassServiceCallback获得IRP，将Scancode直接拷贝并返回IRP；  
 **PocReadCopyDataThread**：用于和KeyboardClassServiceCallback竞争从下层驱动传入的Scancode，暂存到TempBuffer中，防止KeyboardClassHandleRead的InputCount != 0的情况；  
