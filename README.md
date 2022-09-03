@@ -1,28 +1,30 @@
 # KARLANN
 ## It's a kernel-based keylogger for Windows x64.
-## Foreword£º
-**Karlann**ÊÇÒ»¸öWindowsÄÚºË¼üÅÌ¼ÇÂ¼Æ÷£¬PocÇı¶¯Í¨¹ı½ØÈ¡Win32k·¢ËÍµ½KbdclassµÄIRP£¬»ñÈ¡¼üÅÌµÄScancode£¬²¢½«Scancode×ª»»³É¶ÔÓ¦µÄ´óĞ¡Ğ´×Ö·û¡£  
-## Description£º
-#### Ô­Àí£º
-½«Win32kÇı¶¯ÓÃÓÚ¶Á¼üÅÌÊı¾İµÄhKeyboard->FileObject->DeviceObjectÌæ»»ÎªPocÇı¶¯µÄDeviceObject£¬
-ÓÉPocÇı¶¯³äµ±ÖĞ¼ä²ãÇı¶¯£¬¹ıÂËWin32kºÍKbdclassµÄIRP¡£  
-ÖØµãÔÚÓÚ»ñÈ¡Õâ¸öFileObject£¬Õâ¸öFileObjectÓÉZwReadFileÌîÔÚIrp->IrpSp->FileObjectÖĞ£¬
-²¢ÇÒKbdclass»áÔÚÃ»ÓĞ¼üÅÌÊı¾İÊ±½«IRP±£´æÔÚËüµÄDeviceExtension->ReadQueueÁ´±íÖĞ£¬
-ËäÈ»KbdclassµÄDeviceExtension½á¹¹ÌåÃ»ÓĞ¹«¿ª£¬µ«ÆäÖĞ´ó²¿·ÖÊı¾İµÄÆ«ÒÆ×Ô´ÓWindows 8¿ªÊ¼¶¼ÊÇ²»±äµÄ£¬
-ËùÒÔ¿ÉÒÔÕÒµ½ReadQueueÁ´±í£¬Ê¹ÓÃKeyboardClassDequeueReadº¯ÊıÈ¡³öIRP£¬Ò²¾ÍÈ¡³öÁËFileObject¡£  
-#### È±Ïİ£º
-²»ÄÜÔÚÇı¶¯ÔËĞĞÊ±£¬Ğ¶ÔØ¼üÅÌ¡£
-#### Î´¹«¿ªµÄ½á¹¹ÌåºÍº¯Êı£¨kbdclass.sys£©£º
+## Forewordï¼š
+**Karlann**æ˜¯ä¸€ä¸ªWindowså†…æ ¸é”®ç›˜è®°å½•å™¨ï¼ŒPocé©±åŠ¨é€šè¿‡æˆªå–Win32kå‘é€åˆ°Kbdclassçš„IRPï¼Œè·å–é”®ç›˜çš„Scancodeï¼Œå¹¶å°†Scancodeè½¬æ¢æˆå¯¹åº”çš„å¤§å°å†™å­—ç¬¦ã€‚  
+## Descriptionï¼š
+![1](https://user-images.githubusercontent.com/41336794/188272341-167188c8-aff0-4b7b-8110-2164a7362aef.gif)  
+#### åŸç†ï¼š
+![1](https://user-images.githubusercontent.com/41336794/188272325-b18c8f2c-4cb4-496c-8600-bbef334fc169.jpg)  
+å°†Win32ké©±åŠ¨ç”¨äºè¯»é”®ç›˜æ•°æ®çš„hKeyboard->FileObject->DeviceObjectæ›¿æ¢ä¸ºPocé©±åŠ¨çš„DeviceObjectï¼Œ
+ç”±Pocé©±åŠ¨å……å½“ä¸­é—´å±‚é©±åŠ¨ï¼Œè¿‡æ»¤Win32kå’ŒKbdclassçš„IRPã€‚  
+é‡ç‚¹åœ¨äºè·å–è¿™ä¸ªFileObjectï¼Œè¿™ä¸ªFileObjectç”±ZwReadFileå¡«åœ¨Irp->IrpSp->FileObjectä¸­ï¼Œ
+å¹¶ä¸”Kbdclassä¼šåœ¨æ²¡æœ‰é”®ç›˜æ•°æ®æ—¶å°†IRPä¿å­˜åœ¨å®ƒçš„DeviceExtension->ReadQueueé“¾è¡¨ä¸­ï¼Œ
+è™½ç„¶Kbdclassçš„DeviceExtensionç»“æ„ä½“æ²¡æœ‰å…¬å¼€ï¼Œä½†å…¶ä¸­å¤§éƒ¨åˆ†æ•°æ®çš„åç§»è‡ªä»Windows 8å¼€å§‹éƒ½æ˜¯ä¸å˜çš„ï¼Œ
+æ‰€ä»¥å¯ä»¥æ‰¾åˆ°ReadQueueé“¾è¡¨ï¼Œä½¿ç”¨KeyboardClassDequeueReadå‡½æ•°å–å‡ºIRPï¼Œä¹Ÿå°±å–å‡ºäº†FileObjectã€‚  
+#### ç¼ºé™·ï¼š
+ä¸èƒ½åœ¨é©±åŠ¨è¿è¡Œæ—¶ï¼Œå¸è½½é”®ç›˜ã€‚
+#### æœªå…¬å¼€çš„ç»“æ„ä½“å’Œå‡½æ•°ï¼ˆkbdclass.sysï¼‰ï¼š
 ```
-DeviceExtension->RemoveLock£¨DeviceExtension + REMOVE_LOCK_OFFET_DE£©
-DeviceExtension->SpinLock£¨DeviceExtension + SPIN_LOCK_OFFSET_DE£©  
-DeviceExtension->ReadQueue£¨DeviceExtension + READ_QUEUE_OFFSET_DE£©  
-kbdclass!KeyboardClassDequeueRead£¨ÔÚÇı¶¯ÄÚÊµÏÖ£©  
+DeviceExtension->RemoveLockï¼ˆDeviceExtension + REMOVE_LOCK_OFFET_DEï¼‰
+DeviceExtension->SpinLockï¼ˆDeviceExtension + SPIN_LOCK_OFFSET_DEï¼‰  
+DeviceExtension->ReadQueueï¼ˆDeviceExtension + READ_QUEUE_OFFSET_DEï¼‰  
+kbdclass!KeyboardClassDequeueReadï¼ˆåœ¨é©±åŠ¨å†…å®ç°ï¼‰  
 ```
-## Build & Installation£º
-1.½¨ÒéÔÚWindows 8.1 x64 6.3£¨9600£© - Windows 10 x64 21H1£¨19043.1889£©»·¾³ÔËĞĞ  
+## Build & Installationï¼š
+1.å»ºè®®åœ¨Windows 8.1 x64 6.3ï¼ˆ9600ï¼‰ - Windows 10 x64 21H1ï¼ˆ19043.1889ï¼‰ç¯å¢ƒè¿è¡Œ  
 ```
-ÒÑ²âÊÔÏµÍ³°æ±¾:  
+å·²æµ‹è¯•ç³»ç»Ÿç‰ˆæœ¬:  
 Windows 8.1 x64 6.3(9600)       PASS
 Windows 10 x64 1511(10586.164)  PASS
 Windows 10 x64 1607(14393.447)  PASS
@@ -31,15 +33,15 @@ Windows 10 x64 1709(16299.15)   PASS
 Windows 10 x64 1809(17763.2928) PASS
 Windows 10 x64 21H1(19043.1889) PASS
 ```
-2.Ê¹ÓÃVisual Studio 2019±àÒëRelease x64 PocÇı¶¯£¨²»ÄÜ±àÒëDebugÇı¶¯£¬IO_REMOVE_LOCKÔÚDebugºÍReleaseÏÂµÄ¶¨Òå²»Í¬£©  
-3.Ê¹ÓÃOsrLoader¼ÓÔØÇı¶¯  
-## License£º
+2.ä½¿ç”¨Visual Studio 2019ç¼–è¯‘Release x64 Pocé©±åŠ¨ï¼ˆä¸èƒ½ç¼–è¯‘Debugé©±åŠ¨ï¼ŒIO_REMOVE_LOCKåœ¨Debugå’ŒReleaseä¸‹çš„å®šä¹‰ä¸åŒï¼‰  
+3.ä½¿ç”¨OsrLoaderåŠ è½½é©±åŠ¨  
+## Licenseï¼š
 **Karlann**, and all its submodules and repos, unless a license is otherwise specified, are licensed under **GPLv3** LICENSE.  
 Dependencies are licensed by their own.  
-## Warning£º
+## Warningï¼š
 Using this program might render your computer into an unstable state.  
 For educational purposes only, use at your own responsibility.  
-## References£º
+## Referencesï¼š
 https://github.com/Aekras1a/Labs/tree/master/Labs/WinDDK/7600.16385.1/src/input/kbdclass  
 https://github.com/ZoloZiak/WinNT4/tree/master/private/ntos/dd/kbdclass  
 https://github.com/ZoloZiak/WinNT4/tree/master/private/ntos/dd/i8042prt  
