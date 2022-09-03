@@ -200,13 +200,19 @@ PocHandleReadThread(
 
 
     KeClearEvent(NewIrp->UserEvent);
-    NewIrp->Tail.Overlay.OriginalFileObject = Irp->Tail.Overlay.OriginalFileObject;
     NewIrp->Tail.Overlay.Thread = Irp->Tail.Overlay.Thread;
     NewIrp->Tail.Overlay.AuxiliaryBuffer = NULL;
     NewIrp->RequestorMode = Irp->RequestorMode;
     NewIrp->PendingReturned = FALSE;
     NewIrp->Cancel = FALSE;
     NewIrp->CancelRoutine = NULL;
+
+    /*
+    * 这三个域必须置NULL
+    */
+    NewIrp->Tail.Overlay.OriginalFileObject = NULL;
+    NewIrp->Overlay.AsynchronousParameters.UserApcRoutine = NULL;
+    NewIrp->Overlay.AsynchronousParameters.UserApcContext = NULL;
 
     NewIrpSp = IoGetNextIrpStackLocation(NewIrp);
     NewIrpSp->FileObject = KbdObj->gKbdFileObject;
@@ -468,12 +474,11 @@ PocIrpHookInitThread(
         * 替换FileObject->DeviceObject为gPocDeviceObject，
         * 这样Win32k的IRP就会发到我们的Poc驱动
         */
-        if (KbdObj->gKbdFileObject->DeviceObject == KbdObj->gBttmDeviceObject)
-        {
-            KbdObj->gKbdFileObject->DeviceObject = gPocDeviceObject;
 
-            gPocDeviceObject->StackSize = max(KbdObj->gBttmDeviceObject->StackSize, gPocDeviceObject->StackSize);
-        }
+        KbdObj->gKbdFileObject->DeviceObject = gPocDeviceObject;
+
+        gPocDeviceObject->StackSize = max(KbdObj->gBttmDeviceObject->StackSize, gPocDeviceObject->StackSize);
+        
 
         ExInterlockedInsertTailList(
             &gKbdObjListHead,
@@ -763,12 +768,13 @@ PocKbdObjListCleanup(
 
 
             PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-                ("%s->Safe to unload. gPocDeviceObject = %p gKbdDeviceObject = %p gBttmDeviceObject = %p gKbdFileObject = %p.\n",
+                ("%s->Safe to unload. gPocDeviceObject = %p gKbdDeviceObject = %p gBttmDeviceObject = %p gKbdFileObject = %p gKbdFileObject->DeviceObject = %p.\n",
                     __FUNCTION__,
                     gPocDeviceObject,
                     KbdObj->gKbdDeviceObject,
                     KbdObj->gBttmDeviceObject,
-                    KbdObj->gKbdFileObject));
+                    KbdObj->gKbdFileObject,
+                    KbdObj->gKbdFileObject->DeviceObject));
         
         }
 
