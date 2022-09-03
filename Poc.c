@@ -1,102 +1,63 @@
 
 #include "global.h"
-#include "utils.h"
 #include "kbd.h"
 
-BOOLEAN gUnloading = 0;
+PDEVICE_OBJECT gPocDeviceObject = NULL;
 
-/*
-* win32k.sys发给kbdclass.sys的IRP一次只有一个，然后等待IRP完成，
-* 当KeyboardClassDequeueRead竞争到IRP后，
-* PocReadCopyDataThread函数就不需要和KeyboardClassServiceCallback竞争Scancode，
-* 因为此时Scancode是安全的，不会被kbdclass.sys直接写入IRP（已被我们抢到）后返回。
-*/
-BOOLEAN gIrpExclusive = 0;
+LIST_ENTRY gKbdObjListHead = { 0 };
 
-POC_READ_FAKE_IRP_ITEM gReadFakeIrpItem = { 0 };
-POC_READ_QUEUE_ITEM gReadQueueItem = { 0 };
 
-KeyboardClassReadCopyData PocReadCopyData = NULL;
-
-/*
-* 从kbdclass.sys驱动中搜索函数KeyboardClassReadCopyData
-* 特征码支持Windows 8.1 x64 - Windows 10 21H1 x64
-*/
-UCHAR gKeyboardClassReadCopyDataPattern[] =
+NTSTATUS
+PocDeviceControlOperation(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Inout_ PIRP Irp
+)
 {
-    0x4C, 0x8B, 0xDC,
-    0x49, 0x89, 0x5B, 0x08,
-    0x49, 0x89, 0x6B, 0x10,
-    0x49, 0x89, 0x73, 0x18,
-    0x57,
-    0x41, 0x54,
-    0x41, 0x55,
-    0x41, 0x56,
-    0x41, 0x57,
-    0x48, 0x83, 0xEC, 0x50,
-    0xFF, 0x81, 0xB8, 0x00, 0x00, 0x00
-};
-
-
-NTSTATUS 
-PocReadCopyDataToIrp(
-    IN PCHAR DeviceExtension, 
-    IN OUT PIRP Irp)
-{
-    ASSERT(NULL != DeviceExtension);
-    ASSERT(NULL != Irp);
-
-    if (NULL == PocReadCopyData)
-    {
-        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-            ("%s->PocReadCopyData is null.\n", __FUNCTION__));
-        return STATUS_INVALID_PARAMETER;
-        goto EXIT;
-    }
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(Irp);
 
     NTSTATUS Status = 0;
 
-    PIRP FakeIrp = gReadFakeIrpItem.FakeIrp;
-    PIO_STACK_LOCATION IrpSp = NULL, FakeIrpSp = NULL;
+    PIO_STACK_LOCATION IrpSp = NULL;
 
-    ULONG MoveSize = 0;
+    PLIST_ENTRY listEntry = NULL;
+    PPOC_KBDCLASS_OBJECT KbdObj = NULL;
 
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
-    FakeIrpSp = IoGetCurrentIrpStackLocation(gReadFakeIrpItem.FakeIrp);
 
-    FakeIrpSp->Parameters.Read.Length = MAXIMUM_ITEMS_READ * sizeof(KEYBOARD_INPUT_DATA);
+    listEntry = gKbdObjListHead.Flink;
 
-    FakeIrp->IoStatus.Status = PocReadCopyData(DeviceExtension, FakeIrp);
-
-    if (0 != FakeIrp->IoStatus.Information)
+    while (listEntry != &gKbdObjListHead)
     {
-        MoveSize = (ULONG)((FakeIrp->IoStatus.Information <=
-            MAXIMUM_ITEMS_READ * sizeof(KEYBOARD_INPUT_DATA) - Irp->IoStatus.Information) ?
-            FakeIrp->IoStatus.Information :
-            MAXIMUM_ITEMS_READ * sizeof(KEYBOARD_INPUT_DATA) - Irp->IoStatus.Information);
+        KbdObj = CONTAINING_RECORD(listEntry, POC_KBDCLASS_OBJECT, ListEntry);
 
-        RtlMoveMemory(
-            (PCHAR)Irp->AssociatedIrp.SystemBuffer + Irp->IoStatus.Information,
-            gReadFakeIrpItem.FakeIrp->AssociatedIrp.SystemBuffer,
-            MoveSize);
-
-        IrpSp->Parameters.Read.Length += MoveSize;
-
-        Irp->IoStatus.Information += MoveSize;
-        Irp->IoStatus.Status = STATUS_SUCCESS;
-
-        if (FakeIrp->IoStatus.Information > MoveSize)
+        if (KbdObj->gKbdFileObject == IrpSp->FileObject)
         {
-            RtlMoveMemory(
-                gReadFakeIrpItem.TempBuffer + gReadFakeIrpItem.KeyCount * sizeof(KEYBOARD_INPUT_DATA),
-                (PCHAR)FakeIrp->AssociatedIrp.SystemBuffer + MoveSize,
-                FakeIrp->IoStatus.Information - MoveSize);
-
-            gReadFakeIrpItem.KeyCount += (ULONG)FakeIrp->IoStatus.Information - MoveSize;
+            break;
         }
+
+        listEntry = listEntry->Flink;
     }
 
-    Status = STATUS_SUCCESS;
+    if (NULL == KbdObj)
+    {
+        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+            ("%s->KbdObj is null.\n", __FUNCTION__));
+        Status = STATUS_INVALID_PARAMETER;
+        goto EXIT;
+    }
+
+    IoSkipCurrentIrpStackLocation(Irp);
+
+    Status = IoCallDriver(KbdObj->gKbdDeviceObject, Irp);
+
+    if (!NT_SUCCESS(Status))
+    {
+        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+            ("%s->IoCallDriver failed. Status = 0x%x.\n",
+                __FUNCTION__,
+                Status));
+    }
 
 EXIT:
 
@@ -106,7 +67,7 @@ EXIT:
 
 PIRP
 KeyboardClassDequeueRead(
-    IN PCHAR DeviceExtension
+    _In_ PCHAR DeviceExtension
 )
 /*++
 
@@ -166,345 +127,426 @@ Assumptions:
 }
 
 
-VOID 
-PocDequeueReadThread(
+VOID
+PocHandleReadThread(
     IN PVOID StartContext
 )
-/*
-* 从kbdclass的IRP链表中竞争IRP
-*/
 {
     ASSERT(NULL != StartContext);
 
-    PCHAR DeviceExtension = StartContext;
-
     NTSTATUS Status = 0;
 
-    KIRQL Irql = { 0 };
-    PKSPIN_LOCK SpinLock = (PKSPIN_LOCK)(DeviceExtension + SPIN_LOCK_OFFSET_DE);
+    PIRP Irp = NULL, NewIrp = NULL;
+    PIO_STACK_LOCATION IrpSp = NULL, NewIrpSp = NULL;
 
-    PIRP Irp = NULL;
-    PPOC_READ_QUEUE ReadQueue = NULL;
+    PLIST_ENTRY listEntry = NULL;
+    PPOC_KBDCLASS_OBJECT KbdObj = NULL;
 
+    PIO_REMOVE_LOCK RemoveLock = NULL;
+    PKEYBOARD_INPUT_DATA InputData = NULL;
 
-    while (!gUnloading && NULL == Irp)
+    Irp = StartContext;
+
+    IrpSp = IoGetCurrentIrpStackLocation(Irp);
+
+    listEntry = gKbdObjListHead.Flink;
+
+    while (listEntry != &gKbdObjListHead)
     {
-        KeAcquireSpinLock(SpinLock, &Irql);
-        Irp = KeyboardClassDequeueRead(DeviceExtension);
-        KeReleaseSpinLock(SpinLock, Irql);
+        KbdObj = CONTAINING_RECORD(listEntry, POC_KBDCLASS_OBJECT, ListEntry);
 
-        if (NULL != Irp)
+        if (KbdObj->gKbdFileObject == IrpSp->FileObject)
         {
-            gIrpExclusive = TRUE;
-
-            ReadQueue = ExAllocatePoolWithTag(NonPagedPool, sizeof(POC_READ_QUEUE), POC_IRP_READ_QUEUE_TAG);
-
-            if (NULL == ReadQueue)
-            {
-                PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-                    ("%s->ExAllocatePoolWithTag ReadQueue failed.\n",
-                        __FUNCTION__));
-                Status = STATUS_INSUFFICIENT_RESOURCES;
-                goto EXIT;
-            }
-
-            RtlZeroMemory(ReadQueue, sizeof(POC_READ_QUEUE));
-
-            ReadQueue->Irp = Irp;
-
-            ExInterlockedInsertTailList(
-                &gReadQueueItem.ReadQueueHead,
-                &ReadQueue->ListEntry,
-                gReadQueueItem.ReadQueueSpinLock);
-
+            break;
         }
 
+        listEntry = listEntry->Flink;
     }
 
-EXIT:
-
-    PsTerminateSystemThread(Status);
-}
-
-
-VOID 
-PocReadCopyDataThread(
-    IN PVOID StartContext
-)
-/*
-* 和KeyboardClassServiceCallback竞争从下层驱动传入的Scancode，暂存到TempBuffer中
-*/
-{
-    ASSERT(NULL != StartContext);
-
-    NTSTATUS Status = 0;
-
-    if (NULL == PocReadCopyData)
+    if (NULL == KbdObj)
     {
         PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-            ("%s->PocReadCopyData is null.\n", __FUNCTION__));
+            ("%s->KbdObj is null.\n", __FUNCTION__));
+        Status = STATUS_INVALID_PARAMETER;
         goto EXIT;
     }
 
-    PCHAR DeviceExtension = StartContext;
 
-    PIRP Irp = NULL;
-    PIO_STACK_LOCATION IrpSp = NULL;
-    ULONG ReadLength = 0;
+    RemoveLock = (PIO_REMOVE_LOCK)((PCHAR)KbdObj->gKbdDeviceObject->DeviceExtension + REMOVE_LOCK_OFFET_DE);
 
-    KIRQL Irql = { 0 };
-    PKSPIN_LOCK SpinLock = (PKSPIN_LOCK)(DeviceExtension + SPIN_LOCK_OFFSET_DE);
-
-    ULONG ulHundredNanoSecond = 0;
-    LARGE_INTEGER Interval = { 0 };
-
-#pragma warning(push)
-#pragma warning(disable:4996)
-    ulHundredNanoSecond = 10 * 1000;
-    Interval = RtlConvertLongToLargeInteger(-1 * ulHundredNanoSecond);
-#pragma warning(pop)
-
-    Irp = gReadFakeIrpItem.FakeIrp;
-
-    IrpSp = IoGetCurrentIrpStackLocation(Irp);
-    ReadLength = MAXIMUM_ITEMS_READ * sizeof(KEYBOARD_INPUT_DATA);
-
-
-    while (!gUnloading)
+    if (Irp == KbdObj->gRemoveLockIrp)
     {
-        
-        IrpSp->Parameters.Read.Length = ReadLength;
-
-        KeAcquireSpinLock(SpinLock, &Irql);
-        Irp->IoStatus.Status = PocReadCopyData(DeviceExtension, Irp);
-
-        if (0 != Irp->IoStatus.Information)
-        {
-            if (Irp->IoStatus.Information <
-                gReadFakeIrpItem.TempBufferSize - gReadFakeIrpItem.KeyCount * sizeof(KEYBOARD_INPUT_DATA))
-            {
-                RtlMoveMemory(
-                    gReadFakeIrpItem.TempBuffer + gReadFakeIrpItem.KeyCount * sizeof(KEYBOARD_INPUT_DATA),
-                    Irp->AssociatedIrp.SystemBuffer,
-                    Irp->IoStatus.Information);
-            }
-            else
-            {
-                KeReleaseSpinLock(SpinLock, Irql);
-                goto EXIT;
-            }
-
-            gReadFakeIrpItem.KeyCount += (ULONG)Irp->IoStatus.Information / sizeof(KEYBOARD_INPUT_DATA);
-        }
-
-        KeReleaseSpinLock(SpinLock, Irql);
-
-
-        if (gIrpExclusive)
-        {
-            Status = KeDelayExecutionThread(KernelMode, FALSE, &Interval);
-        }
+        IoReleaseRemoveLock(RemoveLock, Irp);
+        KbdObj->gRemoveLockIrp = NULL;
     }
+
+
+    NewIrp = IoBuildSynchronousFsdRequest(
+        IRP_MJ_READ,
+        KbdObj->gKbdDeviceObject,
+        Irp->AssociatedIrp.SystemBuffer,
+        IrpSp->Parameters.Read.Length,
+        &IrpSp->Parameters.Read.ByteOffset,
+        &KbdObj->gEvent,
+        &Irp->IoStatus);
+
+    if (NULL == NewIrp)
+    {
+        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+            ("%s->IoBuildSynchronousFsdRequest NewIrp failed..\n", __FUNCTION__));
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto EXIT;
+    }
+
+
+    KeClearEvent(NewIrp->UserEvent);
+    NewIrp->Tail.Overlay.OriginalFileObject = Irp->Tail.Overlay.OriginalFileObject;
+    NewIrp->Tail.Overlay.Thread = Irp->Tail.Overlay.Thread;
+    NewIrp->Tail.Overlay.AuxiliaryBuffer = NULL;
+    NewIrp->RequestorMode = Irp->RequestorMode;
+    NewIrp->PendingReturned = FALSE;
+    NewIrp->Cancel = FALSE;
+    NewIrp->CancelRoutine = NULL;
+
+    NewIrpSp = IoGetNextIrpStackLocation(NewIrp);
+    NewIrpSp->FileObject = KbdObj->gKbdFileObject;
+    NewIrpSp->Parameters.Read.Key = IrpSp->Parameters.Read.Key;
+    
+
+    Status = IoCallDriver(KbdObj->gKbdDeviceObject, NewIrp);
+
+    if (!NT_SUCCESS(Status))
+    {
+        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+            ("%s->IoCallDriver failed. Status = 0x%x.\n",
+                __FUNCTION__,
+                Status));
+    }
+
+    if (STATUS_PENDING == Status)
+    {
+        KeWaitForSingleObject(
+            NewIrp->UserEvent,
+            WrUserRequest,
+            KernelMode,
+            TRUE,
+            NULL);
+    }
+
+
+    if (STATUS_SUCCESS == Irp->IoStatus.Status &&
+        0 != Irp->IoStatus.Information)
+    {
+        IrpSp->Parameters.Read.Length = (ULONG)Irp->IoStatus.Information;
+        InputData = Irp->AssociatedIrp.SystemBuffer;
+
+        for (InputData;
+            (PCHAR)InputData < (PCHAR)Irp->AssociatedIrp.SystemBuffer + Irp->IoStatus.Information;
+            InputData++)
+        {
+            PocPrintScanCode(InputData);
+        }
+
+        if (NULL != KbdObj)
+        {
+            ExEnterCriticalRegionAndAcquireResourceExclusive(&KbdObj->Resource);
+
+            KbdObj->gSafeUnload = TRUE;
+
+            ExReleaseResourceAndLeaveCriticalRegion(&KbdObj->Resource);
+        }
+
+        IoCompleteRequest(Irp, IO_KEYBOARD_INCREMENT);
+    }
+    else
+    {
+        if (NULL != KbdObj)
+        {
+            ExEnterCriticalRegionAndAcquireResourceExclusive(&KbdObj->Resource);
+
+            KbdObj->gSafeUnload = TRUE;
+
+            ExReleaseResourceAndLeaveCriticalRegion(&KbdObj->Resource);
+        }
+
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    }
+
 
 EXIT:
 
-    gUnloading = TRUE;
-    PsTerminateSystemThread(Status);
-}
-
-
-VOID 
-PocMoveDatatoIrpThread(
-    IN PVOID StartContext
-)
-/*
-* 将TempBuffer中的Scancode传入PocDequeueReadThread竞争的IRP中，结束并返回IRP
-*/
-{
-    ASSERT(NULL != StartContext);
-
-    NTSTATUS Status = 0;
-
-    PCHAR DeviceExtension = StartContext;
-
-    PPOC_READ_QUEUE ReadQueue = NULL;
-    PLIST_ENTRY listEntry = NULL;
-
-    PIRP Irp = NULL;
-    PIO_STACK_LOCATION IrpSp = NULL;
-    ULONG MoveSize = 0;
-
-    PKSPIN_LOCK SpinLock = (PKSPIN_LOCK)(DeviceExtension + SPIN_LOCK_OFFSET_DE);
-    KIRQL Irql = { 0 };
-
-    PKEYBOARD_INPUT_DATA InputData = NULL;
-
-    ULONG ulHundredNanoSecond = 0;
-    LARGE_INTEGER Interval = { 0 };
-
-    HANDLE ThreadHandle = NULL;
-
-
-    while (!gUnloading)
-    {
-
-        if (!IsListEmpty(&gReadQueueItem.ReadQueueHead) && gReadFakeIrpItem.KeyCount > 0)
-        {
-            listEntry = ExInterlockedRemoveHeadList(
-                &gReadQueueItem.ReadQueueHead,
-                gReadQueueItem.ReadQueueSpinLock);
-
-            ReadQueue = CONTAINING_RECORD(listEntry, POC_READ_QUEUE, ListEntry);
-
-            Irp = ReadQueue->Irp;
-
-            if (NULL != ReadQueue)
-            {
-                ExFreePoolWithTag(ReadQueue, POC_IRP_READ_QUEUE_TAG);
-                ReadQueue = NULL;
-            }
-
-            if (!MmIsAddressValid(Irp))
-            {
-                PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-                    ("%s->Irp = %p address invaild.\n",
-                        __FUNCTION__, Irp));
-                goto EXIT;
-            }
-            else
-            {
-                if (STATUS_PENDING != Irp->IoStatus.Status)
-                {
-                    PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-                        ("%s->Irp->IoStatus.Status = 0x%x.\n",
-                            __FUNCTION__, Irp->IoStatus.Status));
-
-                    goto EXIT;
-                }
-            }
-
-            IrpSp = IoGetCurrentIrpStackLocation(Irp);
-
-            KeAcquireSpinLock(SpinLock, &Irql);
-
-            MoveSize = (gReadFakeIrpItem.KeyCount * sizeof(KEYBOARD_INPUT_DATA) < IrpSp->Parameters.Read.Length) ?
-                gReadFakeIrpItem.KeyCount * sizeof(KEYBOARD_INPUT_DATA) : IrpSp->Parameters.Read.Length;
-
-            RtlMoveMemory(
-                Irp->AssociatedIrp.SystemBuffer,
-                gReadFakeIrpItem.TempBuffer,
-                MoveSize);
-
-            IrpSp->Parameters.Read.Length = MoveSize;
-            Irp->IoStatus.Information = MoveSize;
-            Irp->IoStatus.Status = STATUS_SUCCESS;
-
-            gReadFakeIrpItem.KeyCount -= MoveSize / sizeof(KEYBOARD_INPUT_DATA);
-
-            if (gReadFakeIrpItem.KeyCount > 0)
-            {
-                RtlMoveMemory(
-                    gReadFakeIrpItem.TempBuffer,
-                    gReadFakeIrpItem.TempBuffer + MoveSize,
-                    gReadFakeIrpItem.KeyCount * sizeof(KEYBOARD_INPUT_DATA));
-            }
-            
-            KeReleaseSpinLock(SpinLock, Irql);
-
-#pragma warning(push)
-#pragma warning(disable:4996)
-            ulHundredNanoSecond = 200 * 1000;
-            Interval = RtlConvertLongToLargeInteger(-1 * ulHundredNanoSecond);
-#pragma warning(pop)
-
-            /*
-            * 多拷贝几次，防止kbdclass的缓冲区残留数据，
-            * 这里基本上多循环几次，就可以不漏字符，通常可以达到四键无冲
-            */
-            for(ULONG i = 0; i < 2; i++)
-            {
-                Status = KeDelayExecutionThread(KernelMode, FALSE, &Interval);
-
-                KeAcquireSpinLock(SpinLock, &Irql);
-
-                Status = PocReadCopyDataToIrp(DeviceExtension, Irp);
-
-                if (!NT_SUCCESS(Status))
-                {
-                    PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-                        ("%s->PocReadCopyDataToIrp failed. Status = 0x%x.\n",
-                            __FUNCTION__,
-                            Status));
-                    goto EXIT;
-                }
-
-                KeReleaseSpinLock(SpinLock, Irql);
-            }
-
-
-            InputData = Irp->AssociatedIrp.SystemBuffer;
-
-            for (ULONG i = 0; i < Irp->IoStatus.Information / sizeof(KEYBOARD_INPUT_DATA); i++)
-            {
-                PocPrintScanCode(InputData);
-                InputData += 1;
-            }
-
-            gIrpExclusive = FALSE;
-
-            /*
-            * IoCompleteRequest结束IRP以后，我们的驱动就有抓不到Scancode的风险，
-            * 所以我们尽快的调用PocDequeueReadThread抓取IRP，并让PocReadCopyDataThread和
-            * 和KeyboardClassServiceCallback竞争从下层驱动传入的Scancode，
-            * 直到再次抓到IRP
-            */
-            Status = PsCreateSystemThread(
-                &ThreadHandle,
-                THREAD_ALL_ACCESS,
-                NULL,
-                NULL,
-                NULL,
-                PocDequeueReadThread,
-                DeviceExtension);
-
-            if (!NT_SUCCESS(Status))
-            {
-                PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-                    ("%s->PsCreateSystemThread PocDequeueReadThread failed. Status = 0x%x.\n",
-                        __FUNCTION__,
-                        Status));
-                goto EXIT;
-            }
-
-            if (NULL != ThreadHandle)
-            {
-                ZwClose(ThreadHandle);
-                ThreadHandle = NULL;
-            }
-
-            IoCompleteRequest(Irp, IO_KEYBOARD_INCREMENT);
-        }
-
-#pragma warning(push)
-#pragma warning(disable:4996)
-        ulHundredNanoSecond = 10 * 1000;
-        Interval = RtlConvertLongToLargeInteger(-1 * ulHundredNanoSecond);
-#pragma warning(pop)
-
-        Status = KeDelayExecutionThread(KernelMode, FALSE, &Interval);
-    }
-
-EXIT:
-
-    PocReadQueueCleanup();
-
-    gUnloading = TRUE;
     PsTerminateSystemThread(Status);
 }
 
 
 NTSTATUS
-PocDriverEntry(
+PocReadOperation(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Inout_ PIRP Irp
+)
+{
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(Irp);
+
+    NTSTATUS Status = 0;
+
+    PIO_STACK_LOCATION IrpSp = NULL;
+
+    PPOC_KBDCLASS_OBJECT KbdObj = NULL;
+    PLIST_ENTRY listEntry = NULL;
+
+    HANDLE ThreadHandle = NULL;
+
+    IrpSp = IoGetCurrentIrpStackLocation(Irp);
+
+    if (IrpSp->Parameters.Read.Length == 0) 
+    {
+        Status = STATUS_SUCCESS;
+    }
+    else if (IrpSp->Parameters.Read.Length % sizeof(KEYBOARD_INPUT_DATA)) 
+    {
+        Status = STATUS_BUFFER_TOO_SMALL;
+    }
+    else 
+    {
+        //
+        // We only allow a trusted subsystem with the appropriate privilege
+        // level to execute a Read call.
+        //
+
+        Status = STATUS_PENDING;
+    }
+
+    //
+    // If status is pending, mark the packet pending and start the packet
+    // in a cancellable state.  Otherwise, complete the request.
+    //
+
+    Irp->IoStatus.Status = Status;
+    Irp->IoStatus.Information = 0;
+
+    if (Status == STATUS_PENDING) 
+    {
+        listEntry = gKbdObjListHead.Flink;
+
+        while (listEntry != &gKbdObjListHead)
+        {
+            KbdObj = CONTAINING_RECORD(listEntry, POC_KBDCLASS_OBJECT, ListEntry);
+
+            if (KbdObj->gKbdFileObject == IrpSp->FileObject)
+            {
+                ExEnterCriticalRegionAndAcquireResourceExclusive(&KbdObj->Resource);
+
+                KbdObj->gSafeUnload = FALSE;
+
+                ExReleaseResourceAndLeaveCriticalRegion(&KbdObj->Resource);
+            }
+
+            listEntry = listEntry->Flink;
+        }
+
+        IoMarkIrpPending(Irp);
+
+        Status = PsCreateSystemThread(
+            &ThreadHandle,
+            THREAD_ALL_ACCESS,
+            NULL,
+            NULL,
+            NULL,
+            PocHandleReadThread,
+            Irp);
+        
+        if (!NT_SUCCESS(Status))
+        {
+            PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+                ("%s->PsCreateSystemThread PocHandleReadThread failed. Status = 0x%x.\n",
+                    __FUNCTION__,
+                    Status));
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            goto EXIT;
+        }
+
+        if (NULL != ThreadHandle)
+        {
+            ZwClose(ThreadHandle);
+            ThreadHandle = NULL;
+        }
+
+        return STATUS_PENDING;
+    }
+    else 
+    {
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    }
+
+
+EXIT:
+
+    return Status;
+}
+
+
+VOID
+PocIrpHookInitThread(
+    IN PVOID StartContext
+)
+{
+    UNREFERENCED_PARAMETER(StartContext);
+
+    ASSERT(NULL != StartContext);
+
+    NTSTATUS Status = 0;
+
+    PDEVICE_OBJECT KbdDeviceObject = NULL;
+
+    PCHAR KbdDeviceExtension = NULL;
+    PIO_REMOVE_LOCK RemoveLock = NULL;
+    PKSPIN_LOCK SpinLock = NULL;
+    KIRQL Irql = { 0 };
+
+    PIRP Irp = NULL;
+    PIO_STACK_LOCATION IrpSp = NULL;
+    PPOC_KBDCLASS_OBJECT KbdObj = NULL;
+
+    HANDLE ThreadHandle = NULL;
+
+    KbdDeviceObject = StartContext;
+
+
+    while (NULL != KbdDeviceObject)
+    {
+        KbdDeviceExtension = KbdDeviceObject->DeviceExtension;
+        RemoveLock = (PIO_REMOVE_LOCK)(KbdDeviceExtension + REMOVE_LOCK_OFFET_DE);
+        SpinLock = (PKSPIN_LOCK)(KbdDeviceExtension + SPIN_LOCK_OFFSET_DE);
+
+        KbdObj = ExAllocatePoolWithTag(NonPagedPool, sizeof(POC_KBDCLASS_OBJECT), POC_NONPAGED_POOL_TAG);
+
+        if (NULL == KbdObj)
+        {
+            PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+                ("%s->ExAllocatePoolWithTag KbdObj failed.\n",
+                    __FUNCTION__));
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            goto EXIT;
+        }
+
+        RtlZeroMemory(KbdObj, sizeof(POC_KBDCLASS_OBJECT));
+
+
+        /*
+        * 从Kbdclass的IRP链表DeviceExtension->ReadQueue取出IRP
+        */
+        while (TRUE)
+        {
+            KeAcquireSpinLock(SpinLock, &Irql);
+            Irp = KeyboardClassDequeueRead(KbdDeviceExtension);
+            KeReleaseSpinLock(SpinLock, Irql);
+
+            if (NULL != Irp)
+            {
+                break;
+            }
+        }
+
+
+        IrpSp = IoGetCurrentIrpStackLocation(Irp);
+
+        /*
+        * KbdDeviceObject是Kbdclass为每个底层设备分配的的设备对象，
+        * gBttmDeviceObject是Kbdclass设备栈最低层的设备对象，通常为PS/2，USB HID键盘
+        */
+        KbdObj->gSafeUnload = FALSE;
+        KbdObj->gRemoveLockIrp = Irp;
+        KbdObj->gKbdFileObject = IrpSp->FileObject;
+        KbdObj->gBttmDeviceObject = IrpSp->FileObject->DeviceObject;
+        KbdObj->gKbdDeviceObject = KbdDeviceObject;
+
+        KeInitializeEvent(&KbdObj->gEvent, SynchronizationEvent, FALSE);
+        ExInitializeResourceLite(&KbdObj->Resource);
+
+        /*
+        * 替换FileObject->DeviceObject为gPocDeviceObject，
+        * 这样Win32k的IRP就会发到我们的Poc驱动
+        */
+        if (KbdObj->gKbdFileObject->DeviceObject == KbdObj->gBttmDeviceObject)
+        {
+            KbdObj->gKbdFileObject->DeviceObject = gPocDeviceObject;
+
+            gPocDeviceObject->StackSize = max(KbdObj->gBttmDeviceObject->StackSize, gPocDeviceObject->StackSize);
+        }
+
+        ExInterlockedInsertTailList(
+            &gKbdObjListHead,
+            &KbdObj->ListEntry,
+            &((PDEVICE_EXTENSION)(gPocDeviceObject->DeviceExtension))->gKbdObjSpinLock);
+
+        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+            ("%s->ExInterlockedInsertTailList gPocDeviceObject = %p gKbdDeviceObject = %p gBttmDeviceObject = %p gKbdFileObject = %p.\n",
+                __FUNCTION__,
+                gPocDeviceObject,
+                KbdObj->gKbdDeviceObject,
+                KbdObj->gBttmDeviceObject,
+                KbdObj->gKbdFileObject));
+
+        Status = PsCreateSystemThread(
+            &ThreadHandle,
+            THREAD_ALL_ACCESS,
+            NULL,
+            NULL,
+            NULL,
+            PocHandleReadThread,
+            Irp);
+
+        if (!NT_SUCCESS(Status))
+        {
+            PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+                ("%s->PsCreateSystemThread PocHandleReadThread failed. Status = 0x%x.\n",
+                    __FUNCTION__,
+                    Status));
+            Status = STATUS_SUCCESS;
+            goto EXIT;
+        }
+
+        if (NULL != ThreadHandle)
+        {
+            ZwClose(ThreadHandle);
+            ThreadHandle = NULL;
+        }
+
+        KbdDeviceObject = KbdDeviceObject->NextDevice;
+    }
+
+    Status = STATUS_SUCCESS;
+
+EXIT:
+
+    if (!NT_SUCCESS(Status) && NULL != KbdObj)
+    {
+        if (KbdObj->gKbdFileObject->DeviceObject != KbdObj->gBttmDeviceObject)
+        {
+            KbdObj->gKbdFileObject->DeviceObject = KbdObj->gBttmDeviceObject;
+        }
+
+        ExDeleteResourceLite(&KbdObj->Resource);
+
+        if (NULL != KbdObj)
+        {
+            ExFreePoolWithTag(KbdObj, POC_NONPAGED_POOL_TAG);
+            KbdObj = NULL;
+        }
+
+        Irp->IoStatus.Status = 0;
+        Irp->IoStatus.Information = 0;
+        IoReleaseRemoveLock(RemoveLock, Irp);
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    }
+
+    PsTerminateSystemThread(Status);
+}
+
+
+NTSTATUS
+DriverEntry(
     _In_ PDRIVER_OBJECT  DriverObject,
     _In_ PUNICODE_STRING RegistryPath
 )
@@ -539,194 +581,85 @@ Return Value:
 
     NTSTATUS Status = 0;
 
-    UNICODE_STRING DeviceName = { 0 };
-
-    PDRIVER_OBJECT driverObject = NULL;
-    PDEVICE_OBJECT DeviceObject = NULL;
-    PCHAR DeviceExtension = NULL;
-
-    PCHAR TextSection = NULL;
-    ULONG SectionSize = 0;
-
-    PIO_STACK_LOCATION IrpSp = NULL;
+    UNICODE_STRING DriverName = { 0 };
+    PDRIVER_OBJECT KbdDriverObject = NULL;
 
     HANDLE ThreadHandle = NULL;
+    
 
-    /*
-    * 使用kdmapper加载驱动时不能使用DriverObject
-    */
-    if (NULL != DriverObject)
+    RtlInitUnicodeString(&DriverName, L"\\Karlann");
+
+    Status = IoCreateDevice(
+        DriverObject,
+        sizeof(DEVICE_EXTENSION),
+        &DriverName,
+        FILE_DEVICE_KEYBOARD,
+        0,
+        FALSE,
+        &gPocDeviceObject);
+
+    if (!NT_SUCCESS(Status))
     {
-        DriverObject->DriverUnload = PocUnload;
+        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+            ("%s->IoCreateDevice failed. Status = 0x%x.\n",
+                __FUNCTION__, Status));
+        goto EXIT;
     }
 
     /*
-    * 找到键盘驱动kbdclass.sys的DeviceExtension
+    * 使用内存Irp->AssociatedIrp.SystemBuffer
     */
-    RtlInitUnicodeString(&DeviceName, L"\\Driver\\Kbdclass");
+    gPocDeviceObject->Flags |= DO_BUFFERED_IO;
+
+
+    /*
+    * 找到键盘驱动Kbdclass的DeviceObject
+    */
+    RtlInitUnicodeString(&DriverName, L"\\Driver\\Kbdclass");
 
     Status = ObReferenceObjectByName(
-        &DeviceName, 
+        &DriverName,
         OBJ_CASE_INSENSITIVE, 
         NULL, 
         FILE_ALL_ACCESS, 
         *IoDriverObjectType,
         KernelMode, 
         NULL, 
-        &driverObject);
+        &KbdDriverObject);
 
     if (!NT_SUCCESS(Status))
     {
         PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
             ("%s->ObReferenceObjectByName %ws failed. Status = 0x%x.\n", 
                 __FUNCTION__, 
-                DeviceName.Buffer, 
+                DriverName.Buffer,
                 Status));
         goto EXIT;
     }
 
-    DeviceObject = driverObject->DeviceObject;
-    DeviceExtension = DeviceObject->DeviceExtension;
+    InitializeListHead(&gKbdObjListHead);
+    KeInitializeSpinLock(&((PDEVICE_EXTENSION)(gPocDeviceObject->DeviceExtension))->gKbdObjSpinLock);
 
 
-    /*
-    * 找到函数KeyboardClassReadCopyData的位置
-    */
-    TextSection = PocLookupImageSectionByName(
-        ".text",
-        driverObject->DriverStart,
-        &SectionSize);
+    DriverObject->MajorFunction[IRP_MJ_READ] = PocReadOperation;
+    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = PocDeviceControlOperation;
 
-    if (NULL == TextSection)
-    {
-        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-            ("%s->PocLookupImageSectionByNameULONG TextSection failed.\n",
-                __FUNCTION__));
-        Status = STATUS_UNSUCCESSFUL;
-        goto EXIT;
-    }
-
-    PocReadCopyData = (KeyboardClassReadCopyData)PocFindPattern(
-        TextSection,
-        SectionSize,
-        (PCHAR)gKeyboardClassReadCopyDataPattern,
-        sizeof(gKeyboardClassReadCopyDataPattern));
-
-    if (NULL == PocReadCopyData)
-    {
-        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-            ("%s->PocFindPattern PocReadCopyData failed.\n",
-                __FUNCTION__));
-        Status = STATUS_UNSUCCESSFUL;
-        goto EXIT;
-    }
-
-    PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-        ("%s->DriverStart = %p PocReadCopyData = %p DeviceExtension = %p.\n",
-            __FUNCTION__,
-            driverObject->DriverStart,
-            PocReadCopyData,
-            DeviceExtension));
+    DriverObject->DriverUnload = PocUnload;
 
 
-    /*
-    * 初始化用于抢夺kbdclass的IRP的链表
-    */
-    gReadQueueItem.ReadQueueSpinLock = ExAllocatePoolWithTag(
-        NonPagedPool,
-        sizeof(KSPIN_LOCK),
-        POC_SPIN_LOCK_TAG);
-
-    if (NULL == gReadQueueItem.ReadQueueSpinLock)
-    {
-        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-            ("%s->ExAllocatePoolWithTag ReadQueueSpinLock failed.\n",
-                __FUNCTION__));
-        Status = STATUS_INSUFFICIENT_RESOURCES;
-        goto EXIT;
-    }
-
-    RtlZeroMemory(gReadQueueItem.ReadQueueSpinLock, sizeof(KSPIN_LOCK));
-
-    InitializeListHead(&gReadQueueItem.ReadQueueHead);
-    KeInitializeSpinLock(gReadQueueItem.ReadQueueSpinLock);
-
-
-    /*
-    * 初始化我们用于PocReadCopyData参数的FakeIrp和暂存Scancode的TempBuffer
-    */
-
-    gReadFakeIrpItem.FakeIrp = IoAllocateIrp(DeviceObject->StackSize, FALSE);
-
-    if (NULL == gReadFakeIrpItem.FakeIrp)
-    {
-        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-            ("%s->IoAllocateIrp gReadFakeIrpItem.FakeIrp failed.\n",
-                __FUNCTION__));
-        Status = STATUS_INSUFFICIENT_RESOURCES;
-        goto EXIT;
-    }
-
-    IrpSp = IoGetCurrentIrpStackLocation(gReadFakeIrpItem.FakeIrp);
-    IrpSp->Parameters.Read.Length = MAXIMUM_ITEMS_READ * sizeof(KEYBOARD_INPUT_DATA);
-
-    gReadFakeIrpItem.FakeIrp->AssociatedIrp.SystemBuffer = ExAllocatePoolWithTag(
-        NonPagedPool,
-        IrpSp->Parameters.Read.Length,
-        POC_IRP_SYSTEMBUFFER_TAG);
-
-    if (NULL == gReadFakeIrpItem.FakeIrp->AssociatedIrp.SystemBuffer)
-    {
-        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-            ("%s->ExAllocatePoolWithTag gReadFakeIrpItem.FakeIrp->AssociatedIrp.SystemBuffer failed.\n",
-                __FUNCTION__));
-        Status = STATUS_INSUFFICIENT_RESOURCES;
-        goto EXIT;
-    }
-
-    RtlZeroMemory(
-        gReadFakeIrpItem.FakeIrp->AssociatedIrp.SystemBuffer,
-        IrpSp->Parameters.Read.Length);
-
-
-    gReadFakeIrpItem.TempBufferSize = PAGE_SIZE * 10;
-
-    gReadFakeIrpItem.TempBuffer = ExAllocatePoolWithTag(
-        NonPagedPool,
-        gReadFakeIrpItem.TempBufferSize,
-        POC_IRP_SYSTEMBUFFER_TAG);
-
-    if (NULL == gReadFakeIrpItem.TempBuffer)
-    {
-        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-            ("%s->ExAllocatePoolWithTag gReadFakeIrpItem.TempBuffer failed.\n",
-                __FUNCTION__));
-        Status = STATUS_INSUFFICIENT_RESOURCES;
-        goto EXIT;
-    }
-
-    RtlZeroMemory(gReadFakeIrpItem.TempBuffer, gReadFakeIrpItem.TempBufferSize);
-
-
-    /*
-    * 创建三个线程，分别为
-    * PocDequeueReadThread：用于从kbdclass的IRP链表中抢夺IRP；
-    * PocReadCopyDataThread：用于和KeyboardClassServiceCallback竞争从下层驱动传入的Scancode，暂存到TempBuffer中；
-    * PocMoveDatatoIrpThread：用于将TempBuffer中的Scancode传入PocDequeueReadThread竞争的IRP中，结束并返回IRP
-    */
     Status = PsCreateSystemThread(
         &ThreadHandle,
         THREAD_ALL_ACCESS,
         NULL,
         NULL,
         NULL,
-        PocDequeueReadThread,
-        DeviceExtension);
+        PocIrpHookInitThread,
+        KbdDriverObject->DeviceObject);
 
     if (!NT_SUCCESS(Status))
     {
         PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-            ("%s->PsCreateSystemThread PocDequeueReadThread failed. Status = 0x%x.\n",
+            ("%s->PsCreateSystemThread PocIrpHookInitThread failed. Status = 0x%x.\n",
                 __FUNCTION__,
                 Status));
         goto EXIT;
@@ -738,150 +671,114 @@ Return Value:
         ThreadHandle = NULL;
     }
 
-
-    Status = PsCreateSystemThread(
-        &ThreadHandle,
-        THREAD_ALL_ACCESS,
-        NULL,
-        NULL,
-        NULL,
-        PocReadCopyDataThread,
-        DeviceExtension);
-
-    if (!NT_SUCCESS(Status))
-    {
-        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-            ("%s->PsCreateSystemThread PocReadCopyDataThread failed. Status = 0x%x.\n",
-                __FUNCTION__,
-                Status));
-        goto EXIT;
-    }
-
-    if (NULL != ThreadHandle)
-    {
-        ZwClose(ThreadHandle);
-        ThreadHandle = NULL;
-    }
-
-
-    Status = PsCreateSystemThread(
-        &ThreadHandle,
-        THREAD_ALL_ACCESS,
-        NULL,
-        NULL,
-        NULL,
-        PocMoveDatatoIrpThread,
-        DeviceExtension);
-
-    if (!NT_SUCCESS(Status))
-    {
-        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-            ("%s->PsCreateSystemThread PocMoveDatatoIrpThread failed. Status = 0x%x.\n",
-                __FUNCTION__,
-                Status));
-        goto EXIT;
-    }
-
-    if (NULL != ThreadHandle)
-    {
-        ZwClose(ThreadHandle);
-        ThreadHandle = NULL;
-    }
-
+    
+    Status = STATUS_SUCCESS;
 
 EXIT:
 
-    if (NULL != driverObject)
+    if (!NT_SUCCESS(Status) && NULL != gPocDeviceObject)
     {
-        ObDereferenceObject(driverObject);
-        driverObject = NULL;
+        IoDeleteDevice(gPocDeviceObject);
+        gPocDeviceObject = NULL;
     }
 
-    if (!NT_SUCCESS(Status))
+    if (NULL != KbdDriverObject)
     {
-        PocReadQueueCleanup();
-    }
-
-    if (!NT_SUCCESS(Status) && NULL != gReadQueueItem.ReadQueueSpinLock)
-    {
-        ExFreePoolWithTag(gReadQueueItem.ReadQueueSpinLock, POC_SPIN_LOCK_TAG);
-        gReadQueueItem.ReadQueueSpinLock = NULL;
-    }
-
-    if (!NT_SUCCESS(Status) && NULL != gReadFakeIrpItem.FakeIrp)
-    {
-        if (NULL != gReadFakeIrpItem.FakeIrp->AssociatedIrp.SystemBuffer)
-        {
-            ExFreePoolWithTag(
-                gReadFakeIrpItem.FakeIrp->AssociatedIrp.SystemBuffer,
-                POC_IRP_SYSTEMBUFFER_TAG);
-            gReadFakeIrpItem.FakeIrp->AssociatedIrp.SystemBuffer = NULL;
-        }
-
-        IoFreeIrp(gReadFakeIrpItem.FakeIrp);
-        gReadFakeIrpItem.FakeIrp = NULL;
-
-        if (NULL != gReadFakeIrpItem.TempBuffer)
-        {
-            ExFreePoolWithTag(
-                gReadFakeIrpItem.TempBuffer,
-                POC_IRP_SYSTEMBUFFER_TAG);
-            gReadFakeIrpItem.TempBuffer = NULL;
-        }
+        ObDereferenceObject(KbdDriverObject);
+        KbdDriverObject = NULL;
     }
 
     return Status;
 }
 
 
-VOID 
-PocReadQueueCleanup(
+VOID
+PocKbdObjListCleanup(
 )
 {
-    PPOC_READ_QUEUE ReadQueue = NULL;
+    PPOC_KBDCLASS_OBJECT KbdObj = NULL;
     PLIST_ENTRY listEntry = NULL;
+
+    PCHAR KbdDeviceExtension = NULL;
+    PIO_REMOVE_LOCK RemoveLock = NULL;
+    PKSPIN_LOCK SpinLock = NULL;
+    KIRQL Irql = { 0 };
 
     PIRP Irp = NULL;
 
-    /*
-    * IoCompleteRequest链表中的IRP，IRP不返回的话，Win32k.sys会一直等待，导致键盘失灵
-    */
-    while (!IsListEmpty(&gReadQueueItem.ReadQueueHead))
+    ULONG ulHundredNanoSecond = 0;
+    LARGE_INTEGER Interval = { 0 };
+
+    while (!IsListEmpty(&gKbdObjListHead))
     {
         listEntry = ExInterlockedRemoveHeadList(
-            &gReadQueueItem.ReadQueueHead,
-            gReadQueueItem.ReadQueueSpinLock);
+            &gKbdObjListHead,
+            &((PDEVICE_EXTENSION)(gPocDeviceObject->DeviceExtension))->gKbdObjSpinLock);
 
-        ReadQueue = CONTAINING_RECORD(listEntry, POC_READ_QUEUE, ListEntry);
-
-        Irp = ReadQueue->Irp;
-
-        if (NULL != ReadQueue)
+        KbdObj = CONTAINING_RECORD(listEntry, POC_KBDCLASS_OBJECT, ListEntry);
+      
+        if (KbdObj->gKbdFileObject->DeviceObject != KbdObj->gBttmDeviceObject)
         {
-            ExFreePoolWithTag(ReadQueue, POC_IRP_READ_QUEUE_TAG);
-            ReadQueue = NULL;
-        }
+            KbdDeviceExtension = KbdObj->gKbdDeviceObject->DeviceExtension;
 
-        if (!MmIsAddressValid(Irp))
-        {
-            PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-                ("%s->Irp = %p address invaild.\n",
-                    __FUNCTION__, Irp));
-            return;
-        }
-        else
-        {
-            if (STATUS_PENDING != Irp->IoStatus.Status)
+            RemoveLock = (PIO_REMOVE_LOCK)((PCHAR)KbdObj->gKbdDeviceObject->DeviceExtension + REMOVE_LOCK_OFFET_DE);
+            SpinLock = (PKSPIN_LOCK)(KbdDeviceExtension + SPIN_LOCK_OFFSET_DE);
+
+            while (TRUE)
             {
-                PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-                    ("%s->Irp->IoStatus.Status = 0x%x.\n",
-                        __FUNCTION__, Irp->IoStatus.Status));
+                KeAcquireSpinLock(SpinLock, &Irql);
+                Irp = KeyboardClassDequeueRead(KbdDeviceExtension);
+                KeReleaseSpinLock(SpinLock, Irql);
 
-                return;
+                if (NULL != Irp)
+                {
+                    break;
+                }
             }
+
+
+            KbdObj->gKbdFileObject->DeviceObject = KbdObj->gBttmDeviceObject;
+
+            /*
+            * 这个IRP是Poc驱动PocHandleReadThread函数发给Kbdclass的，
+            * IoCompleteRequest以后，PocHandleReadThread的KeWaitForSingleObject会结束等待，PocHandleReadThread线程也会退出
+            */
+            Irp->IoStatus.Status = 0;
+            Irp->IoStatus.Information = 0;
+
+            IoReleaseRemoveLock(RemoveLock, Irp);
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+
+#pragma warning(push)
+#pragma warning(disable:4996)
+            ulHundredNanoSecond = 10 * 1000 * 1000;
+            Interval = RtlConvertLongToLargeInteger(-1 * ulHundredNanoSecond);
+#pragma warning(pop)
+
+            while (!KbdObj->gSafeUnload)
+            {
+                KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+            }
+
+
+            PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+                ("%s->Safe to unload. gPocDeviceObject = %p gKbdDeviceObject = %p gBttmDeviceObject = %p gKbdFileObject = %p.\n",
+                    __FUNCTION__,
+                    gPocDeviceObject,
+                    KbdObj->gKbdDeviceObject,
+                    KbdObj->gBttmDeviceObject,
+                    KbdObj->gKbdFileObject));
+        
         }
 
-        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        ExDeleteResourceLite(&KbdObj->Resource);
+
+        if (NULL != KbdObj)
+        {
+            ExFreePoolWithTag(KbdObj, POC_NONPAGED_POOL_TAG);
+            KbdObj = NULL;
+        }
     }
 }
 
@@ -893,48 +790,11 @@ PocUnload(
 {
     UNREFERENCED_PARAMETER(DriverObject);
 
-    NTSTATUS Status = 0;
+    PocKbdObjListCleanup();
 
-    ULONG ulHundredNanoSecond = 0;
-    LARGE_INTEGER Interval = { 0 };
-
-    gUnloading = TRUE;
-
-#pragma warning(push)
-#pragma warning(disable:4996)
-    ulHundredNanoSecond = 10 * 1000 * 1000;
-    Interval = RtlConvertLongToLargeInteger(-1 * ulHundredNanoSecond);
-#pragma warning(pop)
-
-    Status = KeDelayExecutionThread(KernelMode, FALSE, &Interval);
-
-    PocReadQueueCleanup();
-
-    if (NULL != gReadQueueItem.ReadQueueSpinLock)
+    if (NULL != gPocDeviceObject)
     {
-        ExFreePoolWithTag(gReadQueueItem.ReadQueueSpinLock, POC_SPIN_LOCK_TAG);
-        gReadQueueItem.ReadQueueSpinLock = NULL;
-    }
-
-    if (NULL != gReadFakeIrpItem.FakeIrp)
-    {
-        if (NULL != gReadFakeIrpItem.FakeIrp->AssociatedIrp.SystemBuffer)
-        {
-            ExFreePoolWithTag(
-                gReadFakeIrpItem.FakeIrp->AssociatedIrp.SystemBuffer,
-                POC_IRP_SYSTEMBUFFER_TAG);
-            gReadFakeIrpItem.FakeIrp->AssociatedIrp.SystemBuffer = NULL;
-        }
-
-        IoFreeIrp(gReadFakeIrpItem.FakeIrp);
-        gReadFakeIrpItem.FakeIrp = NULL;
-
-        if (NULL != gReadFakeIrpItem.TempBuffer)
-        {
-            ExFreePoolWithTag(
-                gReadFakeIrpItem.TempBuffer,
-                POC_IRP_SYSTEMBUFFER_TAG);
-            gReadFakeIrpItem.TempBuffer = NULL;
-        }
+        IoDeleteDevice(gPocDeviceObject);
+        gPocDeviceObject = NULL;
     }
 }

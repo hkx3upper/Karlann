@@ -1,53 +1,49 @@
-
 # KARLANN
 ## It's a kernel-based keylogger for Windows x64.
-## Forewordï¼š
-**Karlann**æ˜¯ä¸€ä¸ªWindowså†…æ ¸é”®ç›˜è®°å½•å™¨ï¼Œé©±åŠ¨é€šè¿‡å®šæ—¶æ‰«æçš„æ–¹å¼è·å–kbdclass.sysç¼“å†²åŒºçš„é”®ç›˜Scancodeï¼Œå¹¶å°†Scancodeè½¬æ¢æˆå¯¹åº”çš„å¤§å°å†™å­—ç¬¦ã€‚  
-![Karlann](https://user-images.githubusercontent.com/41336794/187206064-15c9149a-caae-46c1-afa6-8a49efe0f3c8.gif)  
-## Descriptionï¼š
-#### åŸç†ï¼š
-kbdclass.sysçš„ä¸‰ä¸ªå…³é”®å‡½æ•°ï¼š  
-KeyboardClassHandleReadã€KeyboardClassServiceCallbackå’ŒKeyboardClassReadCopyData  
-![Karlann](https://user-images.githubusercontent.com/41336794/187205549-92e005c0-d7d5-4f4e-bdee-130a49b00180.jpg)  
-å‡½æ•°KeyboardClassReadCopyDataä½œç”¨æ˜¯å°†Scancodeä»kbdclass.sysçš„ç¼“å†²åŒºæ‹·è´åˆ°IRPä¸­ï¼›  
-å¯¹äºå‡½æ•°KeyboardClassHandleReadï¼Œå¸Œæœ›å®ƒå°†IRPæ’å…¥é“¾è¡¨ReadQueueï¼Œè€Œä¸æ˜¯ç›´æ¥ä»ç¼“å†²åŒºæ‹·è´å¹¶è¿”å›IRPï¼›  
-å¯¹äºå‡½æ•°KeyboardClassServiceCallbackï¼Œå¸Œæœ›å®ƒå°†Scancodeæ‹·è´åˆ°ç¼“å†²åŒºï¼Œè€Œä¸æ˜¯ç›´æ¥æ‹·è´å¹¶è¿”å›IRPã€‚  
-
-å› æ­¤åˆ›å»ºä¸‰ä¸ªçº¿ç¨‹ï¼Œåˆ†åˆ«ä¸ºï¼šPocDequeueReadThreadï¼ŒPocReadCopyDataThreadï¼ŒPocMoveDatatoIrpThreadï¼š  
-**PocDequeueReadThread**ï¼šç”¨äºä»kbdclassçš„IRPé“¾è¡¨ReadQueueä¸­æŠ¢å¤ºIRPï¼Œé˜²æ­¢KeyboardClassServiceCallbackè·å¾—IRPï¼Œå°†Scancodeç›´æ¥æ‹·è´å¹¶è¿”å›IRPï¼›  
-**PocReadCopyDataThread**ï¼šç”¨äºå’ŒKeyboardClassServiceCallbackç«äº‰ä»ä¸‹å±‚é©±åŠ¨ä¼ å…¥çš„Scancodeï¼Œæš‚å­˜åˆ°TempBufferä¸­ï¼Œé˜²æ­¢KeyboardClassHandleReadçš„InputCount != 0çš„æƒ…å†µï¼›  
-**PocMoveDatatoIrpThread**ï¼šç”¨äºå°†TempBufferä¸­çš„Scancodeä¼ å…¥PocDequeueReadThreadæŠ¢å¤ºçš„IRPä¸­ï¼Œç»“æŸIRPã€‚  
-#### ä¸è¶³ï¼š
-å› ä¸ºæ²¡æœ‰hookå‡½æ•°ï¼Œåªæ˜¯ç”¨çº¿ç¨‹æŠ¢å¤ºIRPå’ŒScancodeï¼Œæ‰€ä»¥å°æ¦‚ç‡ä¼šæ¼æ‰Scancodeï¼ˆä¸»è¦å‘ç”Ÿåœ¨é”®ç›˜æŒ‰é”®å¤ªå¿«æ—¶ï¼Œé€šå¸¸Makecodeå’ŒBreakCodeåªä¼šæ¼ä¸€ä¸ªï¼Œç›®å‰åŸºæœ¬æ”¯æŒå››é”®æ— å†²ï¼‰ï¼Œå¯ä»¥é¢å¤–å¤„ç†ä¸€ä¸‹è·å–çš„Scancodeï¼Œç¡®ä¿å¾—åˆ°æ­£ç¡®çš„é”®ç›˜æ•°æ®ã€‚  
-#### æœªå…¬å¼€çš„ç»“æ„ä½“å’Œå‡½æ•°ï¼ˆkbdclass.sysï¼‰ï¼š
+## Foreword£º
+**Karlann**ÊÇÒ»¸öWindowsÄÚºË¼üÅÌ¼ÇÂ¼Æ÷£¬PocÇı¶¯Í¨¹ı½ØÈ¡Win32k·¢ËÍµ½KbdclassµÄIRP£¬»ñÈ¡¼üÅÌµÄScancode£¬²¢½«Scancode×ª»»³É¶ÔÓ¦µÄ´óĞ¡Ğ´×Ö·û¡£  
+## Description£º
+#### Ô­Àí£º
+½«Win32kÇı¶¯ÓÃÓÚ¶Á¼üÅÌÊı¾İµÄhKeyboard->FileObject->DeviceObjectÌæ»»ÎªPocÇı¶¯µÄDeviceObject£¬
+ÓÉPocÇı¶¯³äµ±ÖĞ¼ä²ãÇı¶¯£¬¹ıÂËWin32kºÍKbdclassµÄIRP¡£  
+ÖØµãÔÚÓÚ»ñÈ¡Õâ¸öFileObject£¬Õâ¸öFileObjectÓÉZwReadFileÌîÔÚIrp->IrpSp->FileObjectÖĞ£¬
+²¢ÇÒKbdclass»áÔÚÃ»ÓĞ¼üÅÌÊı¾İÊ±½«IRP±£´æÔÚËüµÄDeviceExtension->ReadQueueÁ´±íÖĞ£¬
+ËäÈ»KbdclassµÄDeviceExtension½á¹¹ÌåÃ»ÓĞ¹«¿ª£¬µ«ÆäÖĞ´ó²¿·ÖÊı¾İµÄÆ«ÒÆ×Ô´ÓWindows 8¿ªÊ¼¶¼ÊÇ²»±äµÄ£¬
+ËùÒÔ¿ÉÒÔÕÒµ½ReadQueueÁ´±í£¬Ê¹ÓÃKeyboardClassDequeueReadº¯ÊıÈ¡³öIRP£¬Ò²¾ÍÈ¡³öÁËFileObject¡£  
+#### È±Ïİ£º
+²»ÄÜÔÚÇı¶¯ÔËĞĞÊ±£¬Ğ¶ÔØ¼üÅÌ¡£
+#### Î´¹«¿ªµÄ½á¹¹ÌåºÍº¯Êı£¨kbdclass.sys£©£º
 ```
-DeviceExtension->SpinLockï¼ˆDeviceExtension + SPIN_LOCK_OFFSET_DEï¼‰  
-DeviceExtension->ReadQueueï¼ˆDeviceExtension + READ_QUEUE_OFFSET_DEï¼‰  
-kbdclass!KeyboardClassReadCopyDataï¼ˆåœ¨kbdclass.syså†…æ‰«æå‡½æ•°çš„ç‰¹å¾ç ï¼‰  
-kbdclass!KeyboardClassDequeueReadï¼ˆåœ¨é©±åŠ¨å†…å®ç°ï¼‰  
+DeviceExtension->RemoveLock£¨DeviceExtension + REMOVE_LOCK_OFFET_DE£©
+DeviceExtension->SpinLock£¨DeviceExtension + SPIN_LOCK_OFFSET_DE£©  
+DeviceExtension->ReadQueue£¨DeviceExtension + READ_QUEUE_OFFSET_DE£©  
+kbdclass!KeyboardClassDequeueRead£¨ÔÚÇı¶¯ÄÚÊµÏÖ£©  
 ```
-## Build & Installationï¼š
-1.å»ºè®®åœ¨Windows 8.1 x64 6.3ï¼ˆ9600ï¼‰ - Windows 10 x64 21H1ï¼ˆ19043.1889ï¼‰ç¯å¢ƒè¿è¡Œ  
+## Build & Installation£º
+1.½¨ÒéÔÚWindows 8.1 x64 6.3£¨9600£© - Windows 10 x64 21H1£¨19043.1889£©»·¾³ÔËĞĞ  
 ```
-å·²æµ‹è¯•ç³»ç»Ÿç‰ˆæœ¬:  
-Windows 8.1 x64 6.3(9600)
-Windows 10 x64 1511(10586.164)
-Windows 10 x64 1709(16299.15)
-Windows 10 x64 1809(17763.2928) 
-Windows 10 x64 1903(18362.30) 
-Windows 10 x64 21H1(19043.1889)  
+ÒÑ²âÊÔÏµÍ³°æ±¾:  
+Windows 8.1 x64 6.3(9600)       PASS
+Windows 10 x64 1511(10586.164)  PASS
+Windows 10 x64 1607(14393.447)  PASS
+Windows 10 x64 1703(15063.0)    PASS
+Windows 10 x64 1709(16299.15)   PASS
+Windows 10 x64 1809(17763.2928) PASS
+Windows 10 x64 21H1(19043.1889) PASS
 ```
-2.ä½¿ç”¨Visual Studio 2019ç¼–è¯‘Debug x64 Pocé©±åŠ¨  
-3.ä½¿ç”¨OsrLoaderæˆ–è€…kdmapperåŠ è½½é©±åŠ¨  
-## Licenseï¼š
+2.Ê¹ÓÃVisual Studio 2019±àÒëRelease x64 PocÇı¶¯£¨²»ÄÜ±àÒëDebugÇı¶¯£¬IO_REMOVE_LOCKÔÚDebugºÍReleaseÏÂµÄ¶¨Òå²»Í¬£©  
+3.Ê¹ÓÃOsrLoader¼ÓÔØÇı¶¯  
+## License£º
 **Karlann**, and all its submodules and repos, unless a license is otherwise specified, are licensed under **GPLv3** LICENSE.  
 Dependencies are licensed by their own.  
-## Warningï¼š
+## Warning£º
 Using this program might render your computer into an unstable state.  
 For educational purposes only, use at your own responsibility.  
-## Referencesï¼š
+## References£º
 https://github.com/Aekras1a/Labs/tree/master/Labs/WinDDK/7600.16385.1/src/input/kbdclass  
 https://github.com/ZoloZiak/WinNT4/tree/master/private/ntos/dd/kbdclass  
 https://github.com/ZoloZiak/WinNT4/tree/master/private/ntos/dd/i8042prt  
 https://github.com/reactos/reactos/tree/master/drivers/hid/kbdhid  
 https://github.com/ZoloZiak/WinNT4/tree/master/private/ntos/w32/ntuser/kernel  
+https://github.com/HighSchoolSoftwareClub/Windows-Research-Kernel-WRK-
+https://download.microsoft.com/download/1/6/1/161ba512-40e2-4cc9-843a-923143f3456c/translate.pdf

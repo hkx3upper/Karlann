@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ntifs.h>
 #include <ntddk.h>
 #include <ntddkbd.h>
 
@@ -9,60 +10,46 @@ extern POBJECT_TYPE* IoDriverObjectType;
 #define PTDBG_TRACE_ROUTINES            0x00000001
 #define PTDBG_TRACE_OPERATION_STATUS    0x00000002
 
-#define FlagOn(Flags,SingleFlag) ((BOOLEAN)(       \
-    (((Flags) & (SingleFlag)) != 0 ? TRUE : FALSE) \
-    )                                              \
-)
-
 #define PT_DBG_PRINT( _dbgLevel, _string )          \
     (FlagOn(gTraceFlags,(_dbgLevel)) ?              \
         DbgPrint _string :                          \
         ((int)0))
 
-#define POC_SPIN_LOCK_TAG               'Sltg'
-#define POC_IRP_READ_QUEUE_TAG          'Rqtg'
-#define POC_IRP_SYSTEMBUFFER_TAG        'Sbtg'
-
-#define MAXIMUM_ITEMS_READ              10
+#define POC_NONPAGED_POOL_TAG           'Pocp'
 
 /*
 * kbdclass的DeviceExtension结构体某些项的偏移，
-* 虽然未导出，但这两个值的偏移从Windows 8 x64开始，都是不变的
+* 虽然未导出，但这几个值的偏移从Windows 8 x64开始，都是不变的
 */
+#define REMOVE_LOCK_OFFET_DE            0x20
 #define SPIN_LOCK_OFFSET_DE             0xA0
 #define READ_QUEUE_OFFSET_DE            0xA8
 
-typedef struct _POC_READ_QUEUE
+typedef struct _POC_KBDCLASS_OBJECT
 {
     LIST_ENTRY ListEntry;
-    PIRP Irp;
-}
-POC_READ_QUEUE, * PPOC_READ_QUEUE;
 
-typedef struct _POC_READ_QUEUE_ITEM
+    BOOLEAN gSafeUnload;
+
+    PIRP gRemoveLockIrp;
+    KEVENT gEvent;
+
+    PDEVICE_OBJECT gBttmDeviceObject;
+    PDEVICE_OBJECT gKbdDeviceObject;
+    PFILE_OBJECT gKbdFileObject;
+
+    ERESOURCE Resource;
+}
+POC_KBDCLASS_OBJECT, * PPOC_KBDCLASS_OBJECT;
+
+typedef struct _DEVICE_EXTENSION 
 {
-    LIST_ENTRY ReadQueueHead;
-    PKSPIN_LOCK ReadQueueSpinLock;
+    KSPIN_LOCK gKbdObjSpinLock;
 }
-POC_READ_QUEUE_ITEM, * PPOC_READ_QUEUE_ITEM;
-
-typedef struct _POC_READ_FAKE_IRP_ITEM
-{
-    PIRP FakeIrp;
-    PCHAR TempBuffer;
-    ULONG TempBufferSize;
-    ULONG KeyCount;
-}
-POC_READ_FAKE_IRP_ITEM, * PPOC_READ_FAKE_IRP_ITEM;
-
-typedef NTSTATUS(*KeyboardClassReadCopyData)
-(
-    IN PVOID DeviceExtension,
-    IN PIRP Irp
-    );
+DEVICE_EXTENSION, * PDEVICE_EXTENSION;
 
 NTSTATUS
-PocDriverEntry(
+DriverEntry(
     _In_ PDRIVER_OBJECT  DriverObject,
     _In_ PUNICODE_STRING RegistryPath
 );
@@ -70,10 +57,6 @@ PocDriverEntry(
 VOID 
 PocUnload(
     _In_ PDRIVER_OBJECT  DriverObject
-);
-
-VOID
-PocReadQueueCleanup(
 );
 
 NTSTATUS
@@ -89,5 +72,5 @@ ObReferenceObjectByName(
 );
 
 #ifdef ALLOC_PRAGMA
-#pragma alloc_text (INIT, PocDriverEntry)
+#pragma alloc_text (INIT, DriverEntry)
 #endif
