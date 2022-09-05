@@ -29,14 +29,18 @@ typedef struct _POC_KBDCLASS_OBJECT
 {
     LIST_ENTRY ListEntry;
 
-    BOOLEAN gSafeUnload;
+    BOOLEAN InitSuccess;
+    BOOLEAN SafeUnload;
+    BOOLEAN IrpCancel;
 
-    PIRP gRemoveLockIrp;
-    KEVENT gEvent;
+    PIRP NewIrp;
+    PIRP RemoveLockIrp;
 
-    PDEVICE_OBJECT gBttmDeviceObject;
-    PDEVICE_OBJECT gKbdDeviceObject;
-    PFILE_OBJECT gKbdFileObject;
+    KEVENT Event;
+
+    PFILE_OBJECT KbdFileObject;
+    PDEVICE_OBJECT BttmDeviceObject;
+    PDEVICE_OBJECT KbdDeviceObject;
 
     ERESOURCE Resource;
 }
@@ -45,6 +49,11 @@ POC_KBDCLASS_OBJECT, * PPOC_KBDCLASS_OBJECT;
 typedef struct _DEVICE_EXTENSION 
 {
     KSPIN_LOCK gKbdObjSpinLock;
+    LIST_ENTRY gKbdObjListHead;
+
+    PDRIVER_OBJECT gKbdDriverObject;
+
+    BOOLEAN gIsUnloading;
 }
 DEVICE_EXTENSION, * PDEVICE_EXTENSION;
 

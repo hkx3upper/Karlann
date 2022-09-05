@@ -1,7 +1,7 @@
 # KARLANN
 ## It's a kernel-based keylogger for Windows x64.
 ## Foreword：
-**Karlann**是一个Windows内核键盘记录器，Poc驱动通过截取Win32k发送到Kbdclass的IRP，获取键盘的Scancode，并将Scancode转换成对应的字符。  
+**Karlann**是一个Windows内核键盘记录器，Poc驱动截取Win32k发送到Kbdclass的IRP，获取键盘的Scancode，并将Scancode转换成对应的字符。  
 ## Description：
 #### 演示：  
 获取某即时通讯软件的键盘输入  
@@ -14,8 +14,7 @@
 并且Kbdclass会在没有键盘数据时将IRP保存在它的DeviceExtension->ReadQueue链表中，
 虽然Kbdclass的DeviceExtension结构体没有公开，但其中大部分结构的偏移自从Windows 8开始都是不变的，
 所以可以找到ReadQueue链表，使用KeyboardClassDequeueRead函数取出IRP，也就取出了FileObject。  
-#### 缺陷：
-不能在驱动运行时，卸载键盘。
+支持PNP，Poc驱动会在IoCancelIrp时将FileObject->DeviceObject还原，以便于之后设备卸载。
 #### 未公开的结构体和函数（kbdclass.sys）：
 ```
 DeviceExtension->RemoveLock（DeviceExtension + REMOVE_LOCK_OFFET_DE）
@@ -26,14 +25,15 @@ kbdclass!KeyboardClassDequeueRead（在驱动内实现）
 ## Build & Installation：
 1.建议在Windows 8.1 x64 6.3（9600） - Windows 10 x64 21H1（19043.1889）环境运行  
 ```
-已测试系统版本:  
-Windows 8.1 x64 6.3(9600)       PASS
-Windows 10 x64 1511(10586.164)  PASS
-Windows 10 x64 1607(14393.447)  PASS
-Windows 10 x64 1703(15063.0)    PASS
-Windows 10 x64 1709(16299.15)   PASS
-Windows 10 x64 1809(17763.2928) PASS
-Windows 10 x64 21H1(19043.1889) PASS
+已测试系统版本:                    0903        0905
+Windows 8 x64                   NOTESTED    PASS
+Windows 8.1 x64 6.3(9600)       PASS        NOTESTED
+Windows 10 x64 1511(10586.164)  PASS        PASS
+Windows 10 x64 1607(14393.447)  PASS        NOTESTED
+Windows 10 x64 1703(15063.0)    PASS        PASS
+Windows 10 x64 1709(16299.15)   PASS        NOTESTED
+Windows 10 x64 1809(17763.2928) PASS        PASS
+Windows 10 x64 21H1(19043.1889) PASS        PASS
 ```
 2.使用Visual Studio 2019编译Release x64 Poc驱动  
 ```
