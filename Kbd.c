@@ -52,7 +52,7 @@ PocPrintScanCode(
 
     MakeCode = (UCHAR)InputData->MakeCode;
 
-    if (KEY_E0 == InputData->Flags || KEY_E0_BREAK == InputData->Flags)
+    if (FlagOn(InputData->Flags, KEY_E0))
     {
         switch (MakeCode) {
         case 0x1D: strcpy(Buffer, "[Right Ctrl]"); break;
@@ -81,7 +81,14 @@ PocPrintScanCode(
             return;
         }
 
-        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("Key?? = %s\n", Buffer));
+        if (FlagOn(InputData->Flags, KEY_BREAK))
+        {
+            PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("KeyUp   = %s\n", Buffer));
+        }
+        else
+        {
+            PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("KeyDown = %s\n", Buffer));
+        }
 
     }
     else
@@ -104,17 +111,17 @@ PocPrintScanCode(
             Index += 0x54 * 2;
         }
 
-        if (KEY_MAKE == InputData->Flags)
-        {
-            PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("KeyDown = %s\n", gKeyString[Index]));
-        }
-        else if (KEY_BREAK == InputData->Flags)
+        if (FlagOn(InputData->Flags, KEY_BREAK))
         {
             PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("KeyUp   = %s\n", gKeyString[Index]));
         }
+        else
+        {
+            PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("KeyDown = %s\n", gKeyString[Index]));
+        }
 
 
-        if (KEY_MAKE == InputData->Flags)
+        if (FlagOn(InputData->Flags, KEY_MAKE))
         {
             switch (MakeCode)
             {
@@ -131,7 +138,7 @@ PocPrintScanCode(
                 gKbdStatus ^= KEY_NUM;
             }
         }
-        else if (KEY_BREAK == InputData->Flags)
+        else if (FlagOn(InputData->Flags, KEY_BREAK))
         {
             switch (MakeCode)
             {
