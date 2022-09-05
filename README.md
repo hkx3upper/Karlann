@@ -25,7 +25,7 @@ kbdclass!KeyboardClassDequeueRead（在驱动内实现）
 ## Build & Installation：
 1.建议在Windows 8 x64 - Windows 10 x64 21H1（19043.1889）环境运行  
 ```
-已测试系统版本:                    0903        0905
+已测试系统版本:                  0903        0905
 Windows 8 x64                   NOTESTED    PASS
 Windows 8.1 x64 6.3(9600)       PASS        NOTESTED
 Windows 10 x64 1511(10586.164)  PASS        PASS
@@ -44,8 +44,8 @@ Windows 10 x64 21H1(19043.1889) PASS        PASS
 **Karlann**, and all its submodules and repos, unless a license is otherwise specified, are licensed under **GPLv3** LICENSE.  
 Dependencies are licensed by their own.  
 ## Warning：
-Using this program might render your computer into an unstable state.  
 For educational purposes only, use at your own responsibility.  
+And using this program might render your computer into an unstable state.  
 ## References：
 https://github.com/Aekras1a/Labs/tree/master/Labs/WinDDK/7600.16385.1/src/input/kbdclass  
 https://github.com/ZoloZiak/WinNT4/tree/master/private/ntos/dd/kbdclass  
