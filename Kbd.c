@@ -40,7 +40,7 @@ PocPrintScanCode(
     IN PKEYBOARD_INPUT_DATA InputData
 )
 /*
-* ��ӡScancode
+* ´òÓ¡Scancode
 */
 {
     ASSERT(NULL != InputData);
@@ -121,7 +121,17 @@ PocPrintScanCode(
         }
 
 
-        if (FlagOn(InputData->Flags, KEY_MAKE))
+        if (FlagOn(InputData->Flags, KEY_BREAK))
+        {
+            switch (MakeCode)
+            {
+            case 0x2A:
+            case 0x36:
+                gKbdStatus &= ~KEY_SHIFT;
+                break;
+            }
+        }
+        else
         {
             switch (MakeCode)
             {
@@ -136,16 +146,6 @@ PocPrintScanCode(
 
             case 0x45:
                 gKbdStatus ^= KEY_NUM;
-            }
-        }
-        else if (FlagOn(InputData->Flags, KEY_BREAK))
-        {
-            switch (MakeCode)
-            {
-            case 0x2A:
-            case 0x36:
-                gKbdStatus &= ~KEY_SHIFT;
-                break;
             }
         }
     }
