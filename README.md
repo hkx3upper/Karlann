@@ -1,5 +1,5 @@
 # KARLANN
-## It's a kernel-based keylogger for Windows x64.<a href="https://github.com/hkx3upper/Karlann/wiki">English</a>  
+## It's a kernel-based keylogger for Windows x64. <a href="https://github.com/hkx3upper/Karlann/wiki">English</a>  
 ## Foreword：
 **Karlann**是一个Windows内核键盘记录器，Poc驱动拦截Win32k发送到Kbdclass的IRP，获取键盘的Scancode，并通过UDP将Scancode转换成的字符发送到服务端。  
 ## Description：
