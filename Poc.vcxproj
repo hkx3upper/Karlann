@@ -89,6 +89,8 @@
     </ClCompile>
     <Link>
       <EntryPointSymbol>FxDriverEntry</EntryPointSymbol>
+      <AdditionalLibraryDirectories>$(SolutionDir)libwsk</AdditionalLibraryDirectories>
+      <AdditionalDependencies>libwsk.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -100,10 +102,12 @@
   <ItemGroup>
     <ClCompile Include="Kbd.c" />
     <ClCompile Include="Poc.c" />
+    <ClCompile Include="Wsk.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="global.h" />
     <ClInclude Include="kbd.h" />
+    <ClInclude Include="libwsk.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" />

