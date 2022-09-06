@@ -50,7 +50,7 @@ Windows 10 x64 21H1(19043.1889) PASS        PASS        PASS
 Dependencies are licensed by their own.  
 ## Warning：
 For educational purposes only, use at your own responsibility.  
-And Using this program might render your computer into an unstable state.  
+And using this program might render your computer into an unstable state.  
 ## References：
 https://github.com/Aekras1a/Labs/tree/master/Labs/WinDDK/7600.16385.1/src/input/kbdclass  
 https://github.com/ZoloZiak/WinNT4/tree/master/private/ntos/dd/kbdclass  
