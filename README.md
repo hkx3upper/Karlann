@@ -16,7 +16,8 @@
 虽然Kbdclass的DeviceExtension结构体没有公开，但其中大部分结构的偏移自从Windows 8开始都是不变的，
 所以可以找到ReadQueue链表，使用KeyboardClassDequeueRead函数取出IRP，也就取出了FileObject。  
 3.为支持PNP，Poc驱动会在IoCancelIrp时将FileObject->DeviceObject还原，以便于之后设备卸载。
-4.使用libwsk库，把它的C++库做了一些调整，实现了UDP传输键盘数据的功能。
+4.使用libwsk库(下方References)，把它的C++库做了一些调整，libwsk.h所有函数声明加前缀extern "C"后编译，
+实现了通过UDP传输键盘数据的功能。
 ```
 #### 未公开的结构体和函数（kbdclass.sys）：
 ```
@@ -61,5 +62,5 @@ https://github.com/HighSchoolSoftwareClub/Windows-Research-Kernel-WRK-
 https://download.microsoft.com/download/1/6/1/161ba512-40e2-4cc9-843a-923143f3456c/translate.pdf  
 https://github.com/ParkHanbum/HypervisorKeylogger  
 https://github.com/minglinchen/WinKernelDev/tree/master/Kb_sniff_Mp  
-https://github.com/MiroKaku/libwsk
-https://github.com/akshath/SocketTest
+https://github.com/MiroKaku/libwsk  
+https://github.com/akshath/SocketTest  
