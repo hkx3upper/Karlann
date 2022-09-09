@@ -4,10 +4,10 @@
 **Karlann**是一个Windows内核键盘记录器，Poc驱动拦截Win32k发送到Kbdclass的IRP，获取键盘的Scancode，并通过UDP将Scancode转换成的字符发送到服务端。  
 `P.S. 截至目前，可以过掉任何现有的控件和内核键盘保护。 `
 ## Description：
-#### 演示：  
+#### Demo：  
 获取某即时通讯软件的键盘输入  
 ![1](https://user-images.githubusercontent.com/41336794/188272341-167188c8-aff0-4b7b-8110-2164a7362aef.gif)  
-#### 原理：
+#### Mechanism：
 ![Karlann](https://user-images.githubusercontent.com/41336794/188293026-0bfcdd72-3e2d-47fe-b604-5458d8a710f9.jpg)    
 ```
 1.将Win32k驱动用于读键盘数据的hKeyboard->FileObject->DeviceObject替换为Poc驱动的DeviceObject，
@@ -20,7 +20,7 @@
 4.使用libwsk库(下方References)，把它的C++库做了一些调整，libwsk.h所有函数声明加前缀extern "C"后编译，
 实现了通过UDP传输键盘数据的功能。
 ```
-#### 未公开的结构体和函数（kbdclass.sys）：
+#### Undocumented struct（kbdclass.sys）：
 ```
 DeviceExtension->RemoveLock（DeviceExtension + REMOVE_LOCK_OFFET_DE）
 DeviceExtension->SpinLock（DeviceExtension + SPIN_LOCK_OFFSET_DE）  
