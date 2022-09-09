@@ -5,8 +5,8 @@
 `P.S. 截至目前，可以过掉任何现有的控件和内核键盘保护。 `
 ## Description：
 #### 演示：  
-获取notepad的键盘输入  
-![Demo](https://user-images.githubusercontent.com/41336794/188859281-62d303b8-78bf-4973-861f-33ba7acbdf0e.gif)
+获取某即时通讯软件的键盘输入  
+![1](https://user-images.githubusercontent.com/41336794/188272341-167188c8-aff0-4b7b-8110-2164a7362aef.gif)  
 #### 原理：
 ![Karlann](https://user-images.githubusercontent.com/41336794/188293026-0bfcdd72-3e2d-47fe-b604-5458d8a710f9.jpg)    
 ```
