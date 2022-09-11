@@ -19,6 +19,7 @@
 3.为支持PNP，Poc驱动会在IoCancelIrp时将FileObject->DeviceObject还原，以便于之后设备卸载。
 4.使用libwsk库(下方References)，把它的C++库做了一些调整，libwsk.h所有函数声明加前缀extern "C"后编译，
 实现了通过UDP传输键盘数据的功能。
+5.增加按键映射的功能，在Kbd.c->PocConfigueKeyMapping。
 ```
 #### Undocumented struct（kbdclass.sys）：
 ```
