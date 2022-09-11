@@ -10,3 +10,8 @@ VOID
 PocPrintScanCode(
     IN PKEYBOARD_INPUT_DATA InputData
 );
+
+VOID
+PocConfigueKeyMapping(
+    IN PKEYBOARD_INPUT_DATA InputData
+);

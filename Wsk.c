@@ -88,7 +88,7 @@ StartWSKClientUDP(
             }
 
             PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-                ("%s->Client attempting connection to: %ls port: %ls.\n",
+                ("%s->Client attempting connection to ip = %ls port = %ls.\n",
                     __FUNCTION__, HostName, PortName));
 
             if (Addr->ai_socktype == SOCK_DGRAM)

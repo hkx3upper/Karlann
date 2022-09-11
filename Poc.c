@@ -282,6 +282,8 @@ PocHandleReadThread(
             InputData++)
         {
             PocPrintScanCode(InputData);
+
+            PocConfigueKeyMapping(InputData);
         }
 
         if (NULL != KbdObj)

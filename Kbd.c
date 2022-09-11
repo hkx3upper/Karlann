@@ -167,4 +167,28 @@ PocPrintScanCode(
             }
         }
     }
+
+}
+
+
+VOID
+PocConfigueKeyMapping(
+    IN PKEYBOARD_INPUT_DATA InputData
+)
+/*
+* 按键映射的功能
+*/
+{
+    UNREFERENCED_PARAMETER(InputData);
+
+    ASSERT(NULL != InputData);
+
+    /*
+    * 'Q'的Makecode转换成'W'的Makecode，可以查translate表，Kbdclass的Makecode和Breakcode值是一样的，都是Makecode的值，
+    * 区分是看InputData->Flags的标志位是Make还是Break，translate表在README的Reference中
+    */
+    //if (0x10 == InputData->MakeCode)
+    //{
+    //    InputData->MakeCode = 0x11;
+    //}
 }
