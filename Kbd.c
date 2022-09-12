@@ -172,7 +172,7 @@ PocPrintScanCode(
 
 
 VOID
-PocConfigueKeyMapping(
+PocConfigureKeyMapping(
     IN PKEYBOARD_INPUT_DATA InputData
 )
 /*
