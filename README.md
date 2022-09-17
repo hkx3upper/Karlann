@@ -45,8 +45,15 @@ Windows 10 x64 21H1(19043.1889) PASS        PASS        PASS
 ```
 不能编译Debug驱动，IO_REMOVE_LOCK在Debug和Release下的定义不同
 ```
-3.使用OsrLoader加载驱动  
-4.在局域网使用SocketTest监听global.h里的端口  
+3.系统开启测试模式，cmd以管理员身份运行，输入`bcdedit /set testsigning on`后重启电脑  
+4.驱动日志输出（可选）  
+```
+找到注册表项：HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Debug Print Filter  
+没有Debug Print Filter就新建，在这个键下新建dword值 “default”，十六进制为0xF，然后重启电脑  
+以管理员身份运行DebugView，设置`Capture->Capture Kernel`显示驱动日志  
+```
+5.使用OsrLoader加载驱动  
+6.在局域网使用SocketTest监听global.h里的端口（可选）  
 ![SocketTest](https://user-images.githubusercontent.com/41336794/188532624-a1cb49bf-748e-4fe9-ae2a-f7c3f41f2996.JPG)
 ## License：
 **Karlann**, and all its submodules and repos, unless a license is otherwise specified, are licensed under **GPLv3** LICENSE.  
