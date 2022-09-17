@@ -28,7 +28,7 @@ DeviceExtension->ReadQueue（DeviceExtension + READ_QUEUE_OFFSET_DE）
 kbdclass!KeyboardClassDequeueRead（在驱动内实现）  
 ```
 ## Build & Installation：
-1.建议在Windows 8 x64 6.2（9200） - Windows 10 x64 21H1（19043.1889）环境运行  
+1.建议在Windows 7 x64 6.1(7601) SP1 - Windows 10 x64 21H1（19043.1889）环境运行  
 ```
 已测试系统版本:                  0903        0905        0906
 Windows 7 x64 6.1(7601) SP1			        PASS
