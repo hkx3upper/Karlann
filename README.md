@@ -32,6 +32,7 @@ kbdclass!KeyboardClassDequeueRead（在驱动内实现）
 1.建议在Windows 8 x64 6.2（9200） - Windows 10 x64 21H1（19043.1889）环境运行  
 ```
 已测试系统版本:                  0903        0905        0906
+Windows 7 x64 6.1(7601) SP1			       PASS
 Windows 8  x64 6.2(9200)        NOTESTED    PASS        PASS
 Windows 8.1x64 6.3(9600)        PASS        NOTESTED    NT
 Windows 10 x64 1511(10586.164)  PASS        PASS        PASS
