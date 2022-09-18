@@ -21,9 +21,19 @@ extern POBJECT_TYPE* IoDriverObjectType;
 * kbdclass的DeviceExtension结构体某些项的偏移，
 * 虽然未导出，但这几个值的偏移从Windows 8 x64开始，都是不变的
 */
+#ifdef _WIN64
+
 #define REMOVE_LOCK_OFFET_DE            0x20
 #define SPIN_LOCK_OFFSET_DE             0xA0
 #define READ_QUEUE_OFFSET_DE            0xA8
+
+#else
+
+#define REMOVE_LOCK_OFFET_DE            0x10
+#define SPIN_LOCK_OFFSET_DE             0x6C
+#define READ_QUEUE_OFFSET_DE            0x70
+
+#endif
 
 #define POC_IP_ADDRESS                  L"192.168.10.107"
 #define POC_UDP_PORT                    L"10017"

@@ -1,5 +1,5 @@
 # KARLANN
-## It's a kernel-based keylogger for Windows x64. <a href="https://github.com/hkx3upper/Karlann/wiki">English</a>  
+## It's a kernel-based keylogger for Windows x86/x64. <a href="https://github.com/hkx3upper/Karlann/wiki">English</a>  
 ## Foreword：
 **Karlann**是一个Windows内核键盘记录器，Poc驱动拦截Win32k发送到Kbdclass的IRP，获取键盘的Scancode，并通过UDP将Scancode转换成的字符发送到服务端。  
 ## Description：
@@ -19,6 +19,7 @@
 4.使用libwsk库(下方References)，把它的C++库做了一些调整，libwsk.h所有函数声明加前缀extern "C"后编译，
 实现了通过UDP传输键盘数据的功能。
 5.增加按键映射的功能，在Kbd.c->PocConfigureKeyMapping。
+6.支持Windows 7 x86 - Windows 10 x86。
 ```
 #### Undocumented struct（kbdclass.sys）：
 ```
@@ -28,7 +29,7 @@ DeviceExtension->ReadQueue（DeviceExtension + READ_QUEUE_OFFSET_DE）
 kbdclass!KeyboardClassDequeueRead（在驱动内实现）  
 ```
 ## Build & Installation：
-1.建议在Windows 7 x64 6.1（7601）SP1 - Windows 10 x64 21H1（19043.1889）环境运行  
+1.建议在Windows 7 x86/x64 6.1（7601）SP1 - Windows 10 x86/x64 21H1（19043.1889）环境运行  
 ```
 已测试系统版本:                  0903        0905        0906
 Windows 7  x64 6.1(7601) SP1			        PASS
@@ -40,8 +41,11 @@ Windows 10 x64 1703(15063.0)    PASS        PASS        NT
 Windows 10 x64 1709(16299.15)   PASS        PASS        PASS
 Windows 10 x64 1809(17763.2928) PASS        PASS        PASS
 Windows 10 x64 21H1(19043.1889) PASS        PASS        PASS
+
+Windows 7  x86 6.1(7601) SP1			        PASS
+Windows 10  x86 1909(18363.592)			        PASS
 ```
-2.修改global.h中的POC_IP_ADDRESS（SocketTest所在电脑的IP）和POC_UDP_PORT，使用Visual Studio 2019编译Release x64 Poc驱动  
+2.修改global.h中的POC_IP_ADDRESS（SocketTest所在电脑的IP）和POC_UDP_PORT，修改项目->属性->Driver Setting->Target OS Vserion为对应的版本，使用Visual Studio 2019编译Release x86/x64 Poc驱动  
 ```
 不能编译Debug驱动，IO_REMOVE_LOCK在Debug和Release下的定义不同
 ```
