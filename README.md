@@ -43,7 +43,7 @@ Windows 10 x64 1809(17763.2928) PASS        PASS        PASS
 Windows 10 x64 21H1(19043.1889) PASS        PASS        PASS
 
 Windows 7  x86 6.1(7601) SP1			        PASS
-Windows 10  x86 1909(18363.592)			        PASS
+Windows 10 x86 1909(18363.592)			        PASS
 ```
 2.修改global.h中的POC_IP_ADDRESS（SocketTest所在电脑的IP）和POC_UDP_PORT，修改项目->属性->Driver Setting->Target OS Vserion为对应的版本，使用Visual Studio 2019编译Release x86/x64 Poc驱动  
 ```
